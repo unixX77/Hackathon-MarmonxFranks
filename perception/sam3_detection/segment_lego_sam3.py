@@ -151,10 +151,8 @@ def preview(rgb, semantic, instance, records):
     return np.hstack([rgb, sem])
 
 
-def main():
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument('root', type=Path, nargs='?', default=Path('data/rgb'))
-    parser.add_argument('--out', type=Path, default=Path('data/predictions/sam3_goodbad'))
+def add_detection_args(parser):
+    """SAM 3 and filtering options shared by the batch and the live-capture scripts."""
     parser.add_argument('--prompts', nargs='+', default=PROMPTS,
                         help='text prompts; detections of all prompts are merged')
     parser.add_argument('--model', default='facebook/sam3')
@@ -165,24 +163,27 @@ def main():
                         help='drop an instance if this fraction of it is already covered by better ones')
     parser.add_argument('--max-colour-dist', type=float, default=35.0,
                         help='instances further than this from every palette colour are dropped as non-LEGO')
-    args = parser.parse_args()
 
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    dtype = torch.bfloat16 if device == 'cuda' else torch.float32
-    processor = Sam3Processor.from_pretrained(args.model)
-    model = Sam3Model.from_pretrained(args.model, torch_dtype=dtype).to(device).eval()
 
-    paths = sorted(args.root.glob('*.png'))
-    print(f'[sam3] {len(paths)} images, prompts={args.prompts}, device={device}')
-    summary = []
-    for n, path in enumerate(paths, 1):
-        image = Image.open(path).convert('RGB')
-        rgb = np.array(image)
+class BrickSegmenter:
+    """Loads SAM 3 once and segments RGB images into coloured, good / bad brick instances."""
+
+    def __init__(self, args):
+        self.args = args
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        self.dtype = torch.bfloat16 if self.device == 'cuda' else torch.float32
+        self.processor = Sam3Processor.from_pretrained(args.model)
+        self.model = Sam3Model.from_pretrained(args.model, torch_dtype=self.dtype).to(self.device).eval()
+
+    def __call__(self, rgb):
+        """rgb: HxWx3 uint8 RGB. Returns semantic, instance, records, rejected."""
+        args = self.args
+        image = Image.fromarray(rgb)
         h, w = rgb.shape[:2]
         lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
 
-        masks, scores, boxes, found_by = run_sam3(model, processor, image, args.prompts,
-                                                  args.threshold, args.mask_threshold, device, dtype)
+        masks, scores, boxes, found_by = run_sam3(self.model, self.processor, image, args.prompts,
+                                                  args.threshold, args.mask_threshold, self.device, self.dtype)
         semantic = np.zeros((h, w), np.uint8)
         instance = np.zeros((h, w), np.uint16)
         records, per_colour, rejected = [], {}, []
@@ -210,27 +211,55 @@ def main():
                 'centroid_xy': [round(float(xs.mean()), 1), round(float(ys.mean()), 1)],
                 'touches_border': bool(xs.min() == 0 or ys.min() == 0 or xs.max() == w - 1 or ys.max() == h - 1),
                 'lab': colour_lab.round(1).tolist(), 'colour_dist': round(dist, 1)})
+        return semantic, instance, records, rejected
 
-        out_dir = args.out / path.stem
-        out_dir.mkdir(parents=True, exist_ok=True)
-        Image.fromarray(semantic).save(out_dir / 'semantic.png')
-        Image.fromarray(instance).save(out_dir / 'instance.png')
-        Image.fromarray(preview(rgb, semantic, instance, records)).save(out_dir / 'preview.png')
-        (out_dir / 'instances.json').write_text(json.dumps({
-            'image': str(path), 'prompts': args.prompts, 'threshold': args.threshold,
-            'classes': {i + 1: name for i, name in enumerate(NAMES)}, 'quality': QUALITY,
-            'instances': records, 'rejected': rejected}, indent=2))
-        n_good = sum(r['quality'] == 'good' for r in records)
-        summary.append({'image': path.name, 'bricks': len(records), 'good': n_good,
-                        'bad': len(records) - n_good, 'per_colour': per_colour})
-        print(f'[sam3] {n}/{len(paths)} {path.name}: {len(records)} bricks '
-              f'({n_good} good, {len(records) - n_good} bad) {per_colour}'
-              + (f', rejected {len(rejected)}' if rejected else ''))
 
-    args.out.mkdir(parents=True, exist_ok=True)
-    (args.out / 'summary.json').write_text(json.dumps({
+def save_result(out_dir, image_path, rgb, semantic, instance, records, rejected, args):
+    """Write semantic.png, instance.png, preview.png and instances.json; return a summary entry."""
+    out_dir.mkdir(parents=True, exist_ok=True)
+    Image.fromarray(semantic).save(out_dir / 'semantic.png')
+    Image.fromarray(instance).save(out_dir / 'instance.png')
+    Image.fromarray(preview(rgb, semantic, instance, records)).save(out_dir / 'preview.png')
+    (out_dir / 'instances.json').write_text(json.dumps({
+        'image': str(image_path), 'prompts': args.prompts, 'threshold': args.threshold,
+        'classes': {i + 1: name for i, name in enumerate(NAMES)}, 'quality': QUALITY,
+        'instances': records, 'rejected': rejected}, indent=2))
+    per_colour = {}
+    for r in records:
+        per_colour[r['colour']] = per_colour.get(r['colour'], 0) + 1
+    n_good = sum(r['quality'] == 'good' for r in records)
+    return {'image': Path(image_path).name, 'bricks': len(records), 'good': n_good,
+            'bad': len(records) - n_good, 'per_colour': per_colour}
+
+
+def write_summary(out, summary):
+    out.mkdir(parents=True, exist_ok=True)
+    (out / 'summary.json').write_text(json.dumps({
         'classes': {i + 1: name for i, name in enumerate(NAMES)}, 'quality': QUALITY,
         'per_image': summary}, indent=2))
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser.add_argument('root', type=Path, nargs='?', default=Path('data/rgb'))
+    parser.add_argument('--out', type=Path, default=Path('data/predictions/sam3_goodbad'))
+    add_detection_args(parser)
+    args = parser.parse_args()
+
+    segmenter = BrickSegmenter(args)
+    paths = sorted(args.root.glob('*.png'))
+    print(f'[sam3] {len(paths)} images, prompts={args.prompts}, device={segmenter.device}')
+    summary = []
+    for n, path in enumerate(paths, 1):
+        rgb = np.array(Image.open(path).convert('RGB'))
+        semantic, instance, records, rejected = segmenter(rgb)
+        entry = save_result(args.out / path.stem, path, rgb, semantic, instance, records, rejected, args)
+        summary.append(entry)
+        print(f'[sam3] {n}/{len(paths)} {path.name}: {entry["bricks"]} bricks '
+              f'({entry["good"]} good, {entry["bad"]} bad) {entry["per_colour"]}'
+              + (f', rejected {len(rejected)}' if rejected else ''))
+
+    write_summary(args.out, summary)
     print(f'[sam3] wrote {args.out}')
 
 

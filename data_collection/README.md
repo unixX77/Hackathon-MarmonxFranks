@@ -1,5 +1,7 @@
 # Webcam RGB capture
 
+For RGB-D capture with an Intel RealSense depth camera, see [realsense_rgbd](realsense_rgbd/README.md).
+
 Install and run from a terminal on the computer with the webcam:
 
 ```bash

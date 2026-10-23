@@ -1,0 +1,54 @@
+{
+  "classes": {
+    "1": "red",
+    "2": "dark_red",
+    "3": "dark_orange",
+    "4": "medium_nougat",
+    "5": "reddish_brown"
+  },
+  "quality": {
+    "red": "good",
+    "dark_red": "good",
+    "dark_orange": "good",
+    "medium_nougat": "bad",
+    "reddish_brown": "bad"
+  },
+  "per_image": [
+    {
+      "image": "rgb_20261023_185622_491366.png",
+      "bricks": 61,
+      "per_colour": {
+        "reddish_brown": 16,
+        "dark_orange": 12,
+        "dark_red": 12,
+        "medium_nougat": 10,
+        "red": 11
+      },
+      "rejected": 20
+    },
+    {
+      "image": "rgb_20261023_185951_544446.png",
+      "bricks": 62,
+      "per_colour": {
+        "red": 14,
+        "reddish_brown": 19,
+        "dark_red": 9,
+        "medium_nougat": 9,
+        "dark_orange": 11
+      },
+      "rejected": 15
+    },
+    {
+      "image": "rgb_20261023_190231_851195.png",
+      "bricks": 54,
+      "per_colour": {
+        "reddish_brown": 19,
+        "dark_orange": 12,
+        "red": 11,
+        "medium_nougat": 8,
+        "dark_red": 4
+      },
+      "rejected": 29
+    }
+  ]
+}

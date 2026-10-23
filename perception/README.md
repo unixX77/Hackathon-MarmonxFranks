@@ -2,7 +2,7 @@
 
 | Folder | Content |
 |---|---|
-| [`sam3_detection/`](sam3_detection/) | SAM 3 instance and colour segmentation of LEGO bricks, with a good / bad label per brick |
+| [`sam3_detection/`](sam3_detection/) | SAM 3 instance and colour segmentation of LEGO bricks from a single text prompt, with a good / bad label per brick |
 
 ## SAM 3 setup
 
@@ -50,7 +50,7 @@ The setup below is the one used to produce the results in `sam3_detection/`. It 
 
    ```bash
    cd sam3_detection
-   python segment_lego_sam3.py path/to/rgb --out results
+   python segment_lego_sam3_single_prompt.py path/to/rgb --out results
    ```
 
 Versions used: Python 3.12.15, torch 2.10.0+cu128, torchvision 0.25.0+cu128, transformers 5.20.1, opencv-python 4.11.0, numpy 1.26.4, SAM 3 at commit `7f473cf`.
