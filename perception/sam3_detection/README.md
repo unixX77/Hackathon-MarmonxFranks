@@ -40,7 +40,7 @@ The text prompts only find bricks. Each brick's colour class comes from its meas
 
 ## Run
 
-The script needs a Python environment with `torch`, `transformers` (with SAM 3 support), `opencv-python`, `pillow` and `numpy`. You also need access to the gated `facebook/sam3` model on Hugging Face (`huggingface-cli login`).
+Set up the `sam3` environment and Hugging Face access as described in the [perception README](../README.md#sam-3-setup). Then run:
 
 ```bash
 python segment_lego_sam3.py path/to/rgb --out results
