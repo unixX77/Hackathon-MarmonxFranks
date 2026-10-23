@@ -1,0 +1,110 @@
+{
+  "image": "data/rgb/rgb_20261023_165109_422686.png",
+  "prompts": [
+    "red lego brick",
+    "dark red lego brick",
+    "orange lego brick",
+    "beige lego brick",
+    "brown lego brick",
+    "lego brick"
+  ],
+  "threshold": 0.6,
+  "classes": {
+    "1": "red",
+    "2": "dark_red",
+    "3": "dark_orange",
+    "4": "medium_nougat",
+    "5": "reddish_brown"
+  },
+  "quality": {
+    "red": "good",
+    "dark_red": "good",
+    "dark_orange": "good",
+    "medium_nougat": "bad",
+    "reddish_brown": "bad"
+  },
+  "instances": [
+    {
+      "id": 1,
+      "colour": "red",
+      "class_id": 1,
+      "colour_index": 1,
+      "quality": "good",
+      "prompt": "red lego brick",
+      "score": 0.969,
+      "area_px": 3903,
+      "box_xyxy": [
+        -0.6,
+        -0.7,
+        58.8,
+        88.0
+      ],
+      "centroid_xy": [
+        23.4,
+        37.4
+      ],
+      "touches_border": true,
+      "lab": [
+        82.0,
+        175.0,
+        169.0
+      ],
+      "colour_dist": 3.0
+    },
+    {
+      "id": 2,
+      "colour": "dark_red",
+      "class_id": 2,
+      "colour_index": 1,
+      "quality": "good",
+      "prompt": "lego brick",
+      "score": 0.914,
+      "area_px": 5107,
+      "box_xyxy": [
+        212.0,
+        244.0,
+        278.0,
+        348.0
+      ],
+      "centroid_xy": [
+        244.4,
+        295.2
+      ],
+      "touches_border": false,
+      "lab": [
+        57.0,
+        149.0,
+        133.0
+      ],
+      "colour_dist": 2.5
+    },
+    {
+      "id": 3,
+      "colour": "dark_red",
+      "class_id": 2,
+      "colour_index": 2,
+      "quality": "good",
+      "prompt": "lego brick",
+      "score": 0.898,
+      "area_px": 4761,
+      "box_xyxy": [
+        230.0,
+        147.0,
+        296.0,
+        249.0
+      ],
+      "centroid_xy": [
+        262.0,
+        197.3
+      ],
+      "touches_border": false,
+      "lab": [
+        57.0,
+        150.0,
+        135.0
+      ],
+      "colour_dist": 2.7
+    }
+  ],
+  "rejected": []
+}

@@ -1,0 +1,56 @@
+{
+  "image": "data/rgb/rgb_20261023_164838_598500.png",
+  "prompts": [
+    "red lego brick",
+    "dark red lego brick",
+    "orange lego brick",
+    "beige lego brick",
+    "brown lego brick",
+    "lego brick"
+  ],
+  "threshold": 0.6,
+  "classes": {
+    "1": "red",
+    "2": "dark_red",
+    "3": "dark_orange",
+    "4": "medium_nougat",
+    "5": "reddish_brown"
+  },
+  "quality": {
+    "red": "good",
+    "dark_red": "good",
+    "dark_orange": "good",
+    "medium_nougat": "bad",
+    "reddish_brown": "bad"
+  },
+  "instances": [
+    {
+      "id": 1,
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "colour_index": 1,
+      "quality": "bad",
+      "prompt": "brown lego brick",
+      "score": 0.938,
+      "area_px": 4933,
+      "box_xyxy": [
+        221.0,
+        253.0,
+        330.0,
+        328.0
+      ],
+      "centroid_xy": [
+        275.6,
+        290.9
+      ],
+      "touches_border": false,
+      "lab": [
+        58.0,
+        134.0,
+        133.0
+      ],
+      "colour_dist": 4.6
+    }
+  ],
+  "rejected": []
+}

@@ -1,0 +1,110 @@
+{
+  "image": "data/rgb/rgb_20261023_165145_106610.png",
+  "prompts": [
+    "red lego brick",
+    "dark red lego brick",
+    "orange lego brick",
+    "beige lego brick",
+    "brown lego brick",
+    "lego brick"
+  ],
+  "threshold": 0.6,
+  "classes": {
+    "1": "red",
+    "2": "dark_red",
+    "3": "dark_orange",
+    "4": "medium_nougat",
+    "5": "reddish_brown"
+  },
+  "quality": {
+    "red": "good",
+    "dark_red": "good",
+    "dark_orange": "good",
+    "medium_nougat": "bad",
+    "reddish_brown": "bad"
+  },
+  "instances": [
+    {
+      "id": 1,
+      "colour": "dark_red",
+      "class_id": 2,
+      "colour_index": 1,
+      "quality": "good",
+      "prompt": "red lego brick",
+      "score": 0.961,
+      "area_px": 6355,
+      "box_xyxy": [
+        256.0,
+        324.0,
+        314.0,
+        440.0
+      ],
+      "centroid_xy": [
+        284.3,
+        381.8
+      ],
+      "touches_border": false,
+      "lab": [
+        76.0,
+        150.0,
+        129.0
+      ],
+      "colour_dist": 9.0
+    },
+    {
+      "id": 2,
+      "colour": "dark_red",
+      "class_id": 2,
+      "colour_index": 2,
+      "quality": "good",
+      "prompt": "lego brick",
+      "score": 0.961,
+      "area_px": 6117,
+      "box_xyxy": [
+        268.0,
+        97.5,
+        324.0,
+        210.0
+      ],
+      "centroid_xy": [
+        297.6,
+        153.3
+      ],
+      "touches_border": false,
+      "lab": [
+        64.0,
+        154.0,
+        138.0
+      ],
+      "colour_dist": 6.2
+    },
+    {
+      "id": 3,
+      "colour": "dark_red",
+      "class_id": 2,
+      "colour_index": 3,
+      "quality": "good",
+      "prompt": "lego brick",
+      "score": 0.949,
+      "area_px": 6299,
+      "box_xyxy": [
+        262.0,
+        211.0,
+        320.0,
+        326.0
+      ],
+      "centroid_xy": [
+        291.9,
+        267.1
+      ],
+      "touches_border": false,
+      "lab": [
+        69.0,
+        151.0,
+        126.0
+      ],
+      "colour_dist": 8.3
+    }
+  ],
+  "rejected": []
+}
