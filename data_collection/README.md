@@ -117,39 +117,3 @@ these poses. Neighboring frames within each short recording may be nearly
 identical; sampling can avoid overweighting repeated views. SDK playback may
 require running from a regular desktop terminal rather than a restricted
 sandbox. This tool needs the installed SDK version with `.db3` playback support.
-
-## Simple SAM3 top-layer test
-
-`sam3_bricks.py` preserves the supplied SAM3 instance and color-classification
-script. `test_top_layer.py` reuses it, back-projects aligned depth, fits the
-background table plane, and keeps instances whose 80th-percentile height is
-within half a block height of the highest instance. Block height defaults to
-10 mm. Masks with too little valid interior depth are rejected. Relative-area,
-rectangularity and color-distance rejection are disabled by default so this test
-uses depth for layer filtering; color classes are still saved.
-
-Run from the project root in your existing **sam3** environment (PyTorch,
-Transformers with Sam3Model/Sam3Processor, Pillow, OpenCV, NumPy; model access
-must be authorized on Hugging Face):
-
-```bash
-conda activate sam3
-python data_collection/test_top_layer.py \
-  data_collection/data/extracted/data3/20261024_091244 --frame 000000
-```
-
-No RealSense connection or pyrealsense2 is needed for this step. The window shows
-RGB, SAM3 foreground, and retained top-layer masks. Press any key to close it.
-Use `--no-show` for headless runs. Results are in
-`data_collection/data/top_layer_test/<recording>/<frame>/`: `final_mask.png`,
-`final_instances.png`, `final_semantic.png`, `overlay.png`, `preview.png`,
-`rgb_masked.png`, `depth_masked.png`, original instance/semantic masks, and
-`report.json` with measured heights and table-fit diagnostics. Masked depth
-remains uint16 in the source depth units. Original captures are unchanged.
-
-Use `--instance-mask path/to/instance.png` to test existing single-channel
-instance IDs without loading SAM3. The dominant background must be the table;
-restrict fitting with `--table-roi X Y W H` if other surfaces dominate.
-This is a simple global-top-layer heuristic, not a graspability or pose estimator.
-Studs, missed segmentation, side faces, and noise can bias the upper percentile.
-Inspect the overlay and report before using the selection for further work.
