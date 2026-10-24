@@ -1,0 +1,1207 @@
+{
+  "recording": "../../extracted/data4/20261024_102430",
+  "frame": "000017",
+  "brick_size_mm": [
+    30,
+    15,
+    10
+  ],
+  "size_tol": 0.3,
+  "top_height_m": 0.0763193702298031,
+  "table_normal": [
+    0.0229158397583829,
+    0.07883016975560429,
+    -0.9966246377771676
+  ],
+  "table_offset_m": 0.42703515365637634,
+  "status_counts": {
+    "brick": 26,
+    "split": 2,
+    "partial": 3,
+    "irregular": 2
+  },
+  "bricks": [
+    {
+      "source_instance": 1,
+      "status": "brick",
+      "height_m": 0.0758,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.5,
+        16.2
+      ],
+      "colour": "red",
+      "class_id": 1,
+      "quality": "good",
+      "id": 1,
+      "centre_cam_m": [
+        0.0036,
+        -0.0136,
+        0.3514
+      ],
+      "yaw_deg_table": 86.3,
+      "footprint_px": [
+        [
+          299.7,
+          233.1
+        ],
+        [
+          352.3,
+          236.4
+        ],
+        [
+          354.1,
+          210.1
+        ],
+        [
+          301.3,
+          206.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 2,
+      "status": "brick",
+      "height_m": 0.0753,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.0,
+        16.0
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 2,
+      "centre_cam_m": [
+        -0.0592,
+        -0.018,
+        0.3501
+      ],
+      "yaw_deg_table": 86.0,
+      "footprint_px": [
+        [
+          188.6,
+          225.0
+        ],
+        [
+          241.7,
+          228.6
+        ],
+        [
+          243.2,
+          202.2
+        ],
+        [
+          190.0,
+          198.5
+        ]
+      ]
+    },
+    {
+      "source_instance": 3,
+      "status": "brick",
+      "height_m": 0.076,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.6,
+        16.6
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 3,
+      "centre_cam_m": [
+        0.0711,
+        -0.0716,
+        0.3482
+      ],
+      "yaw_deg_table": 86.0,
+      "footprint_px": [
+        [
+          419.3,
+          129.8
+        ],
+        [
+          472.1,
+          133.7
+        ],
+        [
+          474.5,
+          106.8
+        ],
+        [
+          421.5,
+          102.9
+        ]
+      ]
+    },
+    {
+      "source_instance": 4,
+      "status": "brick",
+      "height_m": 0.0763,
+      "approx_layer": 8,
+      "measured_mm": [
+        32.2,
+        16.2
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 4,
+      "centre_cam_m": [
+        0.0393,
+        -0.0739,
+        0.347
+      ],
+      "yaw_deg_table": 87.1,
+      "footprint_px": [
+        [
+          363.2,
+          125.8
+        ],
+        [
+          416.4,
+          128.7
+        ],
+        [
+          418.1,
+          101.6
+        ],
+        [
+          364.7,
+          98.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 5,
+      "status": "brick",
+      "height_m": 0.0761,
+      "approx_layer": 8,
+      "measured_mm": [
+        32.0,
+        16.4
+      ],
+      "colour": "red",
+      "class_id": 1,
+      "quality": "good",
+      "id": 5,
+      "centre_cam_m": [
+        0.0659,
+        -0.0091,
+        0.3529
+      ],
+      "yaw_deg_table": 86.7,
+      "footprint_px": [
+        [
+          409.1,
+          241.3
+        ],
+        [
+          461.2,
+          244.2
+        ],
+        [
+          463.2,
+          218.0
+        ],
+        [
+          410.9,
+          215.0
+        ]
+      ]
+    },
+    {
+      "source_instance": 6,
+      "status": "brick",
+      "height_m": 0.0748,
+      "approx_layer": 7,
+      "measured_mm": [
+        32.4,
+        16.6
+      ],
+      "colour": "red",
+      "class_id": 1,
+      "quality": "good",
+      "id": 6,
+      "centre_cam_m": [
+        0.0642,
+        0.0222,
+        0.3567
+      ],
+      "yaw_deg_table": 85.9,
+      "footprint_px": [
+        [
+          405.1,
+          295.1
+        ],
+        [
+          456.6,
+          298.6
+        ],
+        [
+          458.9,
+          272.9
+        ],
+        [
+          407.2,
+          269.3
+        ]
+      ]
+    },
+    {
+      "source_instance": 7,
+      "status": "brick",
+      "height_m": 0.0762,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.5,
+        18.4
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 7,
+      "centre_cam_m": [
+        0.0282,
+        0.0744,
+        0.3586
+      ],
+      "yaw_deg_table": 84.0,
+      "footprint_px": [
+        [
+          342.2,
+          384.0
+        ],
+        [
+          393.5,
+          388.9
+        ],
+        [
+          396.4,
+          363.6
+        ],
+        [
+          345.0,
+          358.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 8,
+      "status": "brick",
+      "height_m": 0.0749,
+      "approx_layer": 7,
+      "measured_mm": [
+        31.2,
+        16.0
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 8,
+      "centre_cam_m": [
+        0.0059,
+        -0.0446,
+        0.3499
+      ],
+      "yaw_deg_table": 86.7,
+      "footprint_px": [
+        [
+          303.7,
+          178.4
+        ],
+        [
+          356.6,
+          181.5
+        ],
+        [
+          358.2,
+          154.8
+        ],
+        [
+          305.2,
+          151.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 9,
+      "status": "brick",
+      "height_m": 0.0758,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.7,
+        16.7
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 9,
+      "centre_cam_m": [
+        -0.0015,
+        0.0485,
+        0.3562
+      ],
+      "yaw_deg_table": 84.8,
+      "footprint_px": [
+        [
+          290.9,
+          340.3
+        ],
+        [
+          342.7,
+          344.6
+        ],
+        [
+          345.1,
+          319.1
+        ],
+        [
+          293.1,
+          314.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 10,
+      "status": "brick",
+      "height_m": 0.0757,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.7,
+        16.2
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 10,
+      "centre_cam_m": [
+        -0.0615,
+        0.0131,
+        0.3521
+      ],
+      "yaw_deg_table": 85.8,
+      "footprint_px": [
+        [
+          185.3,
+          279.8
+        ],
+        [
+          238.0,
+          283.5
+        ],
+        [
+          239.7,
+          257.4
+        ],
+        [
+          186.8,
+          253.6
+        ]
+      ]
+    },
+    {
+      "source_instance": 11,
+      "status": "brick",
+      "height_m": 0.076,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.2,
+        18.6
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 11,
+      "centre_cam_m": [
+        0.0599,
+        0.0771,
+        0.3597
+      ],
+      "yaw_deg_table": 88.3,
+      "footprint_px": [
+        [
+          397.4,
+          390.3
+        ],
+        [
+          448.7,
+          391.4
+        ],
+        [
+          449.8,
+          366.1
+        ],
+        [
+          398.4,
+          365.0
+        ]
+      ]
+    },
+    {
+      "source_instance": 12,
+      "status": "brick",
+      "height_m": 0.0758,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.6,
+        17.5
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 12,
+      "centre_cam_m": [
+        -0.0345,
+        0.0702,
+        0.3572
+      ],
+      "yaw_deg_table": 86.9,
+      "footprint_px": [
+        [
+          234.2,
+          378.6
+        ],
+        [
+          286.1,
+          381.1
+        ],
+        [
+          287.4,
+          355.6
+        ],
+        [
+          235.3,
+          353.1
+        ]
+      ]
+    },
+    {
+      "source_instance": 13,
+      "status": "brick",
+      "height_m": 0.0759,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.5,
+        16.5
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 13,
+      "centre_cam_m": [
+        0.0082,
+        -0.0756,
+        0.3465
+      ],
+      "yaw_deg_table": 86.3,
+      "footprint_px": [
+        [
+          307.7,
+          122.2
+        ],
+        [
+          361.0,
+          125.9
+        ],
+        [
+          362.9,
+          98.8
+        ],
+        [
+          309.4,
+          95.1
+        ]
+      ]
+    },
+    {
+      "source_instance": 14,
+      "status": "brick",
+      "height_m": 0.0758,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.0,
+        15.9
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 14,
+      "centre_cam_m": [
+        0.0348,
+        -0.0109,
+        0.3524
+      ],
+      "yaw_deg_table": 86.7,
+      "footprint_px": [
+        [
+          354.7,
+          238.1
+        ],
+        [
+          407.0,
+          241.0
+        ],
+        [
+          408.8,
+          214.7
+        ],
+        [
+          356.3,
+          211.8
+        ]
+      ]
+    },
+    {
+      "source_instance": 16,
+      "status": "brick",
+      "height_m": 0.0745,
+      "approx_layer": 7,
+      "measured_mm": [
+        31.6,
+        16.9
+      ],
+      "colour": "red",
+      "class_id": 1,
+      "quality": "good",
+      "id": 15,
+      "centre_cam_m": [
+        -0.0639,
+        0.0441,
+        0.3557
+      ],
+      "yaw_deg_table": 87.9,
+      "footprint_px": [
+        [
+          183.0,
+          334.2
+        ],
+        [
+          235.3,
+          335.8
+        ],
+        [
+          235.9,
+          310.1
+        ],
+        [
+          183.4,
+          308.4
+        ]
+      ]
+    },
+    {
+      "source_instance": 17,
+      "status": "split",
+      "height_m": 0.0763,
+      "approx_layer": 8,
+      "measured_mm": [
+        62.2,
+        16.0
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 16,
+      "centre_cam_m": [
+        0.0011,
+        0.0175,
+        0.3534
+      ],
+      "yaw_deg_table": 85.5,
+      "footprint_px": [
+        [
+          295.3,
+          287.3
+        ],
+        [
+          347.6,
+          291.1
+        ],
+        [
+          349.7,
+          265.2
+        ],
+        [
+          297.3,
+          261.2
+        ]
+      ]
+    },
+    {
+      "source_instance": 17,
+      "status": "split",
+      "height_m": 0.0763,
+      "approx_layer": 8,
+      "measured_mm": [
+        62.2,
+        16.0
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 17,
+      "centre_cam_m": [
+        -0.0299,
+        0.0152,
+        0.3525
+      ],
+      "yaw_deg_table": 85.5,
+      "footprint_px": [
+        [
+          240.8,
+          283.2
+        ],
+        [
+          293.4,
+          287.1
+        ],
+        [
+          295.4,
+          261.1
+        ],
+        [
+          242.6,
+          257.1
+        ]
+      ]
+    },
+    {
+      "source_instance": 18,
+      "status": "brick",
+      "height_m": 0.0759,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.5,
+        15.6
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 18,
+      "centre_cam_m": [
+        0.0321,
+        0.0201,
+        0.3546
+      ],
+      "yaw_deg_table": 89.8,
+      "footprint_px": [
+        [
+          350.4,
+          293.5
+        ],
+        [
+          402.5,
+          293.5
+        ],
+        [
+          402.9,
+          267.5
+        ],
+        [
+          350.6,
+          267.5
+        ]
+      ]
+    },
+    {
+      "source_instance": 20,
+      "status": "brick",
+      "height_m": 0.0757,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.1,
+        18.3
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 19,
+      "centre_cam_m": [
+        -0.0655,
+        0.0669,
+        0.3563
+      ],
+      "yaw_deg_table": 85.4,
+      "footprint_px": [
+        [
+          179.8,
+          372.6
+        ],
+        [
+          231.9,
+          376.3
+        ],
+        [
+          233.7,
+          350.8
+        ],
+        [
+          181.4,
+          347.0
+        ]
+      ]
+    },
+    {
+      "source_instance": 21,
+      "status": "brick",
+      "height_m": 0.0746,
+      "approx_layer": 7,
+      "measured_mm": [
+        29.8,
+        15.8
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 20,
+      "centre_cam_m": [
+        -0.0273,
+        -0.0154,
+        0.3518
+      ],
+      "yaw_deg_table": 85.7,
+      "footprint_px": [
+        [
+          245.4,
+          229.6
+        ],
+        [
+          298.0,
+          233.5
+        ],
+        [
+          299.9,
+          207.2
+        ],
+        [
+          247.1,
+          203.2
+        ]
+      ]
+    },
+    {
+      "source_instance": 22,
+      "status": "brick",
+      "height_m": 0.0759,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.5,
+        17.2
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 21,
+      "centre_cam_m": [
+        -0.0029,
+        0.0723,
+        0.358
+      ],
+      "yaw_deg_table": 86.3,
+      "footprint_px": [
+        [
+          288.9,
+          381.7
+        ],
+        [
+          340.6,
+          384.6
+        ],
+        [
+          342.3,
+          359.2
+        ],
+        [
+          290.4,
+          356.3
+        ]
+      ]
+    },
+    {
+      "source_instance": 23,
+      "status": "brick",
+      "height_m": 0.0757,
+      "approx_layer": 8,
+      "measured_mm": [
+        32.7,
+        16.5
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 22,
+      "centre_cam_m": [
+        -0.0229,
+        -0.078,
+        0.3458
+      ],
+      "yaw_deg_table": 86.0,
+      "footprint_px": [
+        [
+          251.9,
+          117.5
+        ],
+        [
+          305.5,
+          121.4
+        ],
+        [
+          307.3,
+          94.3
+        ],
+        [
+          253.6,
+          90.3
+        ]
+      ]
+    },
+    {
+      "source_instance": 24,
+      "status": "brick",
+      "height_m": 0.075,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.5,
+        16.1
+      ],
+      "colour": "red",
+      "class_id": 1,
+      "quality": "good",
+      "id": 23,
+      "centre_cam_m": [
+        -0.0254,
+        -0.047,
+        0.3489
+      ],
+      "yaw_deg_table": 87.2,
+      "footprint_px": [
+        [
+          248.4,
+          174.2
+        ],
+        [
+          301.6,
+          176.8
+        ],
+        [
+          302.8,
+          150.1
+        ],
+        [
+          249.5,
+          147.4
+        ]
+      ]
+    },
+    {
+      "source_instance": 25,
+      "status": "partial",
+      "height_m": 0.0721,
+      "approx_layer": 7,
+      "measured_mm": [
+        31.4,
+        6.7
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": null
+    },
+    {
+      "source_instance": 30,
+      "status": "brick",
+      "height_m": 0.0757,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.7,
+        17.0
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 24,
+      "centre_cam_m": [
+        0.03,
+        0.0514,
+        0.3573
+      ],
+      "yaw_deg_table": 89.7,
+      "footprint_px": [
+        [
+          346.5,
+          347.3
+        ],
+        [
+          398.2,
+          347.3
+        ],
+        [
+          398.6,
+          321.7
+        ],
+        [
+          346.7,
+          321.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 31,
+      "status": "brick",
+      "height_m": 0.0759,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.5,
+        16.3
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 25,
+      "centre_cam_m": [
+        -0.0543,
+        -0.0803,
+        0.3448
+      ],
+      "yaw_deg_table": 86.2,
+      "footprint_px": [
+        [
+          195.4,
+          113.0
+        ],
+        [
+          249.2,
+          116.8
+        ],
+        [
+          250.8,
+          89.6
+        ],
+        [
+          196.7,
+          85.7
+        ]
+      ]
+    },
+    {
+      "source_instance": 36,
+      "status": "brick",
+      "height_m": 0.0752,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.2,
+        18.5
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 26,
+      "centre_cam_m": [
+        -0.0325,
+        0.0477,
+        0.3561
+      ],
+      "yaw_deg_table": 84.7,
+      "footprint_px": [
+        [
+          236.9,
+          338.9
+        ],
+        [
+          288.9,
+          343.4
+        ],
+        [
+          291.2,
+          317.8
+        ],
+        [
+          239.1,
+          313.3
+        ]
+      ]
+    },
+    {
+      "source_instance": 37,
+      "status": "irregular",
+      "height_m": 0.0759,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.9,
+        26.7
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 27,
+      "centre_cam_m": [
+        -0.0566,
+        -0.0544,
+        0.3467
+      ],
+      "yaw_deg_table": 88.6,
+      "footprint_px": [
+        [
+          190.9,
+          171.7
+        ],
+        [
+          247.8,
+          173.1
+        ],
+        [
+          248.5,
+          125.1
+        ],
+        [
+          191.2,
+          123.6
+        ]
+      ]
+    },
+    {
+      "source_instance": 38,
+      "status": "partial",
+      "height_m": 0.0724,
+      "approx_layer": 7,
+      "measured_mm": [
+        30.1,
+        6.9
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": null
+    },
+    {
+      "source_instance": 42,
+      "status": "brick",
+      "height_m": 0.0755,
+      "approx_layer": 8,
+      "measured_mm": [
+        30.9,
+        15.5
+      ],
+      "colour": "reddish_brown",
+      "class_id": 5,
+      "quality": "bad",
+      "id": 28,
+      "centre_cam_m": [
+        0.0367,
+        -0.0422,
+        0.3502
+      ],
+      "yaw_deg_table": 87.2,
+      "footprint_px": [
+        [
+          358.4,
+          183.0
+        ],
+        [
+          411.1,
+          185.6
+        ],
+        [
+          412.7,
+          159.0
+        ],
+        [
+          359.8,
+          156.3
+        ]
+      ]
+    },
+    {
+      "source_instance": 44,
+      "status": "irregular",
+      "height_m": 0.0755,
+      "approx_layer": 8,
+      "measured_mm": [
+        31.9,
+        23.0
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 29,
+      "centre_cam_m": [
+        0.0608,
+        0.0557,
+        0.3586
+      ],
+      "yaw_deg_table": 89.6,
+      "footprint_px": [
+        [
+          397.8,
+          361.0
+        ],
+        [
+          452.5,
+          361.0
+        ],
+        [
+          453.4,
+          322.0
+        ],
+        [
+          398.4,
+          322.0
+        ]
+      ]
+    },
+    {
+      "source_instance": 45,
+      "status": "partial",
+      "height_m": 0.0717,
+      "approx_layer": 7,
+      "measured_mm": [
+        29.4,
+        5.9
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": null
+    },
+    {
+      "source_instance": 48,
+      "status": "brick",
+      "height_m": 0.0753,
+      "approx_layer": 8,
+      "measured_mm": [
+        34.5,
+        16.5
+      ],
+      "colour": "dark_red",
+      "class_id": 2,
+      "quality": "good",
+      "id": 30,
+      "centre_cam_m": [
+        0.0684,
+        -0.0398,
+        0.3514
+      ],
+      "yaw_deg_table": 84.4,
+      "footprint_px": [
+        [
+          413.5,
+          186.1
+        ],
+        [
+          465.7,
+          191.3
+        ],
+        [
+          468.7,
+          164.9
+        ],
+        [
+          416.4,
+          159.6
+        ]
+      ]
+    }
+  ]
+}

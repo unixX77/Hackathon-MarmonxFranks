@@ -2,7 +2,7 @@
 
 | Folder | Content |
 |---|---|
-| [`sam3_detection/`](sam3_detection/) | SAM 3 instance and colour segmentation of LEGO bricks from a single text prompt, with a good / bad label per brick |
+| [`sam3_detection/`](sam3_detection/) | SAM 3 instance and colour segmentation of LEGO bricks from a single text prompt, with a good / bad label per brick, and the individual top-layer bricks of a stack from RGB-D with a brick-size prior |
 
 ## SAM 3 setup
 

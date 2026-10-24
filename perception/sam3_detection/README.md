@@ -1,6 +1,6 @@
 # SAM 3 LEGO brick detection
 
-Instance and colour segmentation of 2x4 LEGO bricks, with a good / bad label per brick: [`segment_lego_sam3_single_prompt.py`](segment_lego_sam3_single_prompt.py).
+Instance and colour segmentation of 2x4 LEGO bricks, with a good / bad label per brick: [`segment_lego_sam3_single_prompt.py`](segment_lego_sam3_single_prompt.py). For RGB-D recordings of a stack, see [Top layer from depth](#top-layer-from-depth-with-the-brick-size-prior).
 
 ![Five touching bricks, one per colour](results_single_prompt/test_set/rgb_20261023_165012_439406/preview.png)
 
@@ -102,3 +102,62 @@ The instances are good: in the image above, every top-layer brick is found as on
 - Some slivers of the layer below, visible in the gaps, are still kept. A higher `--min-rel-area` (about 0.6) or `--threshold` (about 0.85) removes most of them.
 
 To fix the colours, recalibrate `PALETTE` on this camera. Take the reference colours from the `lab` field in `instances.json`, with the camera's white balance and exposure fixed.
+
+## Top layer from depth, with the brick-size prior
+
+[`top_layer_bricks.py`](top_layer_bricks.py) finds the individual bricks of the top layer of a stack in RealSense RGB-D recordings, for picking. It uses the segmentation above and adds depth and a prior on the brick size (30 x 15 x 10 mm).
+
+![Top layer with fitted brick footprints](results_top_layer/20261024_102430/000017/preview.png)
+
+*Top left: camera RGB. Top right: all SAM 3 bricks, filled with their colour class. Bottom left: the top layer selected from depth. Bottom right: the bricks after the size prior, with the fitted 30 x 15 mm footprint of each brick in yellow.*
+
+### How it works
+
+1. Segment the RGB frame with SAM 3 and the "lego brick" prompt, and give each brick a colour class, as described above.
+2. Back-project the depth (aligned to colour) to 3D and fit the table plane with RANSAC to the depth around the bricks.
+3. Measure each brick's height above the table (80th percentile of its eroded mask) and keep the bricks within half a brick height of the highest one. This step is in [`top_layer_depth.py`](top_layer_depth.py), which can also be run on its own.
+4. Project each kept mask onto the table plane at its height and measure it in millimetres:
+   - about 30 x 15 mm: one brick;
+   - about 15 mm wide and n x 30 mm long: n touching bricks merged into one mask, split into n bricks;
+   - about 15 mm wide but clearly shorter than 30 mm, or much narrower than 15 mm: a partly hidden brick or a sliver, rejected;
+   - anything else: kept and flagged `irregular`.
+5. Fit a 30 x 15 mm footprint to each brick and report its centre in the camera frame, its yaw on the table and its layer.
+
+### Run
+
+The input is one extracted recording folder with `rgb/`, `depth/` (aligned to colour, 16-bit) and `camera_info.json` (with `aligned_depth_intrinsics` and `depth_scale_m`):
+
+```bash
+python top_layer_bricks.py path/to/recording --frame 000020
+```
+
+A window shows the preview; add `--no-show` to skip it. Without a display the preview is only saved. `--brick-size-mm L W H` and `--size-tol` (default 0.3, i.e. ±30%) set the prior.
+
+Output in `data/top_layer_bricks/<recording>/<frame>/`:
+
+| File | Content |
+|---|---|
+| `final_instances.png` | uint16 brick id per pixel after splitting, 0 = background |
+| `final_semantic.png` | uint8 colour class per pixel |
+| `overlay.png` | top-layer bricks as coloured patches with white boundaries and the fitted footprints (yellow; magenta for `irregular`) |
+| `preview.png` | the four panels shown above |
+| `bricks.json` | per brick: status (`brick`, `split`, `partial`, `irregular`), colour, quality, measured size, height, layer, centre in the camera frame (m), yaw on the table, footprint in pixels |
+
+### Results
+
+[`results_top_layer/`](results_top_layer/) holds three frames recorded with a RealSense D435 about 42 cm above the table.
+
+| Recording / frame | Top-layer masks | Bricks | Of which split | Rejected |
+|---|---|---|---|---|
+| 20261024_095657 / 000020 | 33 | 28 | 7 | 9 |
+| 20261024_100345 / 000030 | 21 | 18 | 6 | 7 |
+| 20261024_102430 / 000017 | 32 | 30 | 2 | 3 |
+
+- The table plane fits to about 0.9 mm (median residual).
+- The size prior fits the data well: single top-layer bricks measure about 31 x 16 mm on the table.
+- In `20261024_100345` only the left half of the stack has a top layer, and only those bricks are kept.
+
+Known issues:
+
+- Where SAM 3 returns a top-layer brick only as thin slivers, the size prior rejects it, so that brick is missing (top of the left column in `20261024_095657`).
+- The colour palette was calibrated on the webcam images, so the colour names are not reliable on the RealSense yet. The masks and the top-layer selection do not depend on them.
