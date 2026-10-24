@@ -1,0 +1,102 @@
+{
+  "strategy": "robust-lab-prototype-v1",
+  "segmentation_source": "perception/sam3_detection/results_rgbd_topplane_v2/data4/20261024_102426/000000/top_boxes.json",
+  "rgb": "/cache/s95vkond/rgbd_data/extracted/extracted/data4/20261024_102426/rgb/000000.png",
+  "dataset": "data4",
+  "recording": "20261024_102426",
+  "frame": 0,
+  "white_balance": {
+    "table_rgb": [
+      140.0,
+      138.0,
+      133.0
+    ],
+    "rgb_gains": [
+      0.9785699844360352,
+      0.9927499890327454,
+      1.030079960823059
+    ]
+  },
+  "scene_lab_offset": [
+    -37.0,
+    3.0,
+    -6.0
+  ],
+  "good": 0,
+  "bad": 1,
+  "low_confidence": 0,
+  "boxes": [
+    {
+      "id": 1,
+      "center_xy": [
+        186.5,
+        129.3
+      ],
+      "size_wh": [
+        56.6,
+        29.5
+      ],
+      "angle_deg": -86.6,
+      "corners_xy": [
+        [
+          199.60000610351562,
+          158.39999389648438
+        ],
+        [
+          170.10000610351562,
+          156.6999969482422
+        ],
+        [
+          173.5,
+          100.19999694824219
+        ],
+        [
+          202.89999389648438,
+          101.9000015258789
+        ]
+      ],
+      "top_coverage": 0.833,
+      "sam_overlap": 0.87,
+      "position_camera_m": [
+        -0.07417000085115433,
+        -0.06273999810218811,
+        0.3370000123977661
+      ],
+      "source": "sam+lattice",
+      "colour": "reddish_brown",
+      "quality": "bad",
+      "confidence": "high",
+      "colour_distance": 0.0,
+      "distance_margin": 17.545,
+      "runner_up": "dark_red",
+      "lab_raw": [
+        20.0,
+        139.0,
+        136.0
+      ],
+      "lab_corrected": [
+        57.0,
+        136.0,
+        142.0
+      ],
+      "class_distances": {
+        "red": 47.321,
+        "dark_red": 17.545,
+        "dark_orange": 38.723,
+        "medium_nougat": 35.914,
+        "reddish_brown": 0.0
+      },
+      "lab_q25": [
+        16.0,
+        137.0,
+        136.0
+      ],
+      "lab_q75": [
+        21.0,
+        140.0,
+        137.0
+      ],
+      "reliable_pixels": 913
+    }
+  ]
+}

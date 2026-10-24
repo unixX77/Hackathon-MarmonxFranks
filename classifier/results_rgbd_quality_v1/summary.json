@@ -1,0 +1,694 @@
+{
+  "results": [
+    {
+      "dataset": "data3",
+      "recording": "20261024_091244",
+      "frame": 0,
+      "bricks": 27,
+      "good": 19,
+      "bad": 8,
+      "low_confidence": 11,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091244/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091542",
+      "frame": 0,
+      "bricks": 29,
+      "good": 19,
+      "bad": 10,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091542/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091551",
+      "frame": 0,
+      "bricks": 28,
+      "good": 19,
+      "bad": 9,
+      "low_confidence": 13,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091551/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091558",
+      "frame": 0,
+      "bricks": 27,
+      "good": 18,
+      "bad": 9,
+      "low_confidence": 11,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091558/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091602",
+      "frame": 0,
+      "bricks": 26,
+      "good": 18,
+      "bad": 8,
+      "low_confidence": 14,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091602/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091608",
+      "frame": 0,
+      "bricks": 25,
+      "good": 17,
+      "bad": 8,
+      "low_confidence": 13,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091608/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091613",
+      "frame": 0,
+      "bricks": 23,
+      "good": 15,
+      "bad": 8,
+      "low_confidence": 12,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091613/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091623",
+      "frame": 0,
+      "bricks": 22,
+      "good": 14,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091623/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091627",
+      "frame": 0,
+      "bricks": 21,
+      "good": 13,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091627/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091633",
+      "frame": 0,
+      "bricks": 20,
+      "good": 12,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091633/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091640",
+      "frame": 0,
+      "bricks": 19,
+      "good": 11,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091640/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091645",
+      "frame": 0,
+      "bricks": 18,
+      "good": 10,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091645/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091658",
+      "frame": 0,
+      "bricks": 16,
+      "good": 5,
+      "bad": 11,
+      "low_confidence": 6,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091658/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091703",
+      "frame": 0,
+      "bricks": 16,
+      "good": 4,
+      "bad": 12,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091703/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091710",
+      "frame": 0,
+      "bricks": 15,
+      "good": 7,
+      "bad": 8,
+      "low_confidence": 9,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091710/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091714",
+      "frame": 0,
+      "bricks": 14,
+      "good": 3,
+      "bad": 11,
+      "low_confidence": 3,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091714/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091721",
+      "frame": 0,
+      "bricks": 14,
+      "good": 7,
+      "bad": 7,
+      "low_confidence": 5,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091721/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091726",
+      "frame": 0,
+      "bricks": 13,
+      "good": 5,
+      "bad": 8,
+      "low_confidence": 7,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091726/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091731",
+      "frame": 0,
+      "bricks": 12,
+      "good": 5,
+      "bad": 7,
+      "low_confidence": 4,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091731/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091735",
+      "frame": 0,
+      "bricks": 12,
+      "good": 9,
+      "bad": 3,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091735/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091746",
+      "frame": 0,
+      "bricks": 11,
+      "good": 8,
+      "bad": 3,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091746/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091751",
+      "frame": 0,
+      "bricks": 10,
+      "good": 7,
+      "bad": 3,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091751/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091825",
+      "frame": 0,
+      "bricks": 9,
+      "good": 6,
+      "bad": 3,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091825/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091849",
+      "frame": 0,
+      "bricks": 8,
+      "good": 3,
+      "bad": 5,
+      "low_confidence": 3,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091849/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091855",
+      "frame": 0,
+      "bricks": 5,
+      "good": 2,
+      "bad": 3,
+      "low_confidence": 4,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091855/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091903",
+      "frame": 0,
+      "bricks": 6,
+      "good": 2,
+      "bad": 4,
+      "low_confidence": 3,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091903/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091941",
+      "frame": 0,
+      "bricks": 6,
+      "good": 2,
+      "bad": 4,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091941/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091951",
+      "frame": 0,
+      "bricks": 5,
+      "good": 2,
+      "bad": 3,
+      "low_confidence": 4,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091951/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_091956",
+      "frame": 0,
+      "bricks": 4,
+      "good": 1,
+      "bad": 3,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_091956/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_092000",
+      "frame": 0,
+      "bricks": 3,
+      "good": 0,
+      "bad": 3,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_092000/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_092005",
+      "frame": 0,
+      "bricks": 2,
+      "good": 1,
+      "bad": 1,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_092005/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data3",
+      "recording": "20261024_092009",
+      "frame": 0,
+      "bricks": 1,
+      "good": 0,
+      "bad": 1,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data3/20261024_092009/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095638",
+      "frame": 0,
+      "bricks": 30,
+      "good": 19,
+      "bad": 11,
+      "low_confidence": 12,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095638/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095657",
+      "frame": 0,
+      "bricks": 29,
+      "good": 17,
+      "bad": 12,
+      "low_confidence": 14,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095657/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095704",
+      "frame": 0,
+      "bricks": 28,
+      "good": 17,
+      "bad": 11,
+      "low_confidence": 16,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095704/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095712",
+      "frame": 0,
+      "bricks": 27,
+      "good": 17,
+      "bad": 10,
+      "low_confidence": 15,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095712/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095717",
+      "frame": 0,
+      "bricks": 26,
+      "good": 17,
+      "bad": 9,
+      "low_confidence": 16,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095717/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095723",
+      "frame": 0,
+      "bricks": 25,
+      "good": 16,
+      "bad": 9,
+      "low_confidence": 16,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095723/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095822",
+      "frame": 0,
+      "bricks": 24,
+      "good": 19,
+      "bad": 5,
+      "low_confidence": 4,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095822/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095830",
+      "frame": 0,
+      "bricks": 23,
+      "good": 18,
+      "bad": 5,
+      "low_confidence": 8,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095830/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095836",
+      "frame": 0,
+      "bricks": 23,
+      "good": 15,
+      "bad": 8,
+      "low_confidence": 14,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095836/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095841",
+      "frame": 0,
+      "bricks": 21,
+      "good": 16,
+      "bad": 5,
+      "low_confidence": 6,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095841/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095852",
+      "frame": 0,
+      "bricks": 21,
+      "good": 13,
+      "bad": 8,
+      "low_confidence": 12,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095852/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_095954",
+      "frame": 0,
+      "bricks": 21,
+      "good": 13,
+      "bad": 8,
+      "low_confidence": 11,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_095954/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100002",
+      "frame": 0,
+      "bricks": 20,
+      "good": 14,
+      "bad": 6,
+      "low_confidence": 4,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100002/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100010",
+      "frame": 0,
+      "bricks": 19,
+      "good": 11,
+      "bad": 8,
+      "low_confidence": 10,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100010/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100018",
+      "frame": 0,
+      "bricks": 18,
+      "good": 11,
+      "bad": 7,
+      "low_confidence": 8,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100018/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100333",
+      "frame": 0,
+      "bricks": 18,
+      "good": 11,
+      "bad": 7,
+      "low_confidence": 9,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100333/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100339",
+      "frame": 0,
+      "bricks": 17,
+      "good": 9,
+      "bad": 8,
+      "low_confidence": 9,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100339/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100345",
+      "frame": 0,
+      "bricks": 16,
+      "good": 11,
+      "bad": 5,
+      "low_confidence": 3,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100345/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100353",
+      "frame": 0,
+      "bricks": 15,
+      "good": 10,
+      "bad": 5,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100353/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100410",
+      "frame": 0,
+      "bricks": 15,
+      "good": 9,
+      "bad": 6,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100410/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100417",
+      "frame": 0,
+      "bricks": 14,
+      "good": 9,
+      "bad": 5,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100417/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100423",
+      "frame": 0,
+      "bricks": 12,
+      "good": 7,
+      "bad": 5,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100423/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100431",
+      "frame": 0,
+      "bricks": 12,
+      "good": 2,
+      "bad": 10,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100431/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100442",
+      "frame": 0,
+      "bricks": 11,
+      "good": 2,
+      "bad": 9,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100442/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100449",
+      "frame": 0,
+      "bricks": 10,
+      "good": 2,
+      "bad": 8,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100449/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100456",
+      "frame": 0,
+      "bricks": 10,
+      "good": 4,
+      "bad": 6,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100456/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_100502",
+      "frame": 0,
+      "bricks": 9,
+      "good": 4,
+      "bad": 5,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_100502/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102338",
+      "frame": 0,
+      "bricks": 9,
+      "good": 4,
+      "bad": 5,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102338/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102343",
+      "frame": 0,
+      "bricks": 8,
+      "good": 4,
+      "bad": 4,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102343/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102348",
+      "frame": 0,
+      "bricks": 7,
+      "good": 3,
+      "bad": 4,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102348/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102353",
+      "frame": 0,
+      "bricks": 5,
+      "good": 1,
+      "bad": 4,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102353/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102358",
+      "frame": 0,
+      "bricks": 5,
+      "good": 1,
+      "bad": 4,
+      "low_confidence": 2,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102358/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102408",
+      "frame": 0,
+      "bricks": 4,
+      "good": 1,
+      "bad": 3,
+      "low_confidence": 1,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102408/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102414",
+      "frame": 0,
+      "bricks": 3,
+      "good": 1,
+      "bad": 2,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102414/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102421",
+      "frame": 0,
+      "bricks": 2,
+      "good": 0,
+      "bad": 2,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102421/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102426",
+      "frame": 0,
+      "bricks": 1,
+      "good": 0,
+      "bad": 1,
+      "low_confidence": 0,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102426/000000/quality_comparison.png"
+    },
+    {
+      "dataset": "data4",
+      "recording": "20261024_102430",
+      "frame": 0,
+      "bricks": 25,
+      "good": 14,
+      "bad": 11,
+      "low_confidence": 11,
+      "comparison": "classifier/results_rgbd_quality_v1/data4/20261024_102430/000000/quality_comparison.png"
+    }
+  ]
+}

@@ -100,6 +100,27 @@ The saved run covers all 32 `data3` and 37 `data4` recordings, including sparse 
 
 Image-space calibration assumes a fixed camera and stack pose within each dataset. Recalibrate after a material camera/viewpoint change. Severe depth holes or a top layer with no usable SAM seed can still prevent reconstruction.
 
+## Separate good/bad classifier
+
+[`classify_top_brick_quality.py`](../../classifier/classify_top_brick_quality.py) is a separate,
+CPU-only post-processing stage. It reads the existing `top_boxes.json` files;
+it does not run or modify SAM or top-plane segmentation. For each oriented box
+it erodes the boundary, removes shadow and highlight pixels, corrects white
+balance from the neutral table, measures robust Lab colour, and matches the
+brick against the five camera-calibrated colour prototypes. Medium nougat and
+reddish brown are `BAD`; red, dark red, and dark orange are `GOOD`.
+
+```bash
+python ../../classifier/classify_top_brick_quality.py results_rgbd_topplane_v2 \
+  --out ../../classifier/results_rgbd_quality_v1
+```
+
+The classifier writes `quality_result.png`, `quality_comparison.png`, and
+`quality_boxes.json` for every segmented frame, plus root-level JSON and CSV
+summaries. Good boxes are green and bad boxes are red. Confidence, nearest
+colour, runner-up colour, Lab measurements, white-balance gains, and all class
+distances remain available in JSON for calibration and debugging.
+
 ## Preserved earlier RGB-D approaches
 
 Two reproducible RGB-D approaches are retained:
