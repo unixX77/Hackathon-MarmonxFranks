@@ -1,0 +1,70 @@
+# REQUIRED MEASUREMENTS: null fields intentionally prevent startup.
+# object_tcp_grasp maps desired TCP coordinates into the object frame.
+# camera_extrinsic maps optical coordinates into parent_frame.
+# camera_collision box is expressed in fr3_hand_tcp.
+backend: sam3
+base_frame: fr3_link0
+tcp_frame: fr3_hand_tcp
+calibration_validated: false
+brick_size_m: null
+camera_extrinsic:
+  parent_frame: fr3_hand_tcp
+  optical_frame: camera_color_optical_frame
+  xyz_m: null
+  quaternion_xyzw: null
+observation_tcp:
+  xyz_m: null
+  quaternion_xyzw: null
+place_tcp:
+  xyz_m: null
+  quaternion_xyzw: null
+object_tcp_grasp:
+  xyz_m: null
+  quaternion_xyzw: null
+camera_collision:
+  center_m: null
+  size_m: null
+table:
+  center_m: null
+  size_m: null
+velocity_scale: 0.03
+acceleration_scale: 0.03
+gripper:
+  open_width_m: 0.08
+  grasp_width_m: 0.015
+  speed_m_s: 0.02
+  force_n: 10.0
+refinement:
+  clearance_m: 0.05
+  max_xy_step_m: 0.01
+  max_yaw_step_deg: 5.0
+  xy_tolerance_m: 0.001
+  yaw_tolerance_deg: 0.5
+  position_stability_m: 0.002
+  angle_stability_deg: 1.0
+  stable_observations: 3
+  association_distance_m: 0.02
+  max_object_shift_m: 0.03
+  max_iterations: 12
+  min_camera_depth_m: 0.3
+  max_camera_depth_m: 1.0
+  final_descent_max_m: 0.06
+  max_result_age_s: 60.0
+perception:
+  model: facebook/sam3
+  prompt: lego brick
+  depth_scale_m: 0.001
+  table_roi: null
+  min_score: 0.7
+  min_valid_fraction: 0.7
+  max_height_spread_m: 0.004
+  max_plane_residual_m: 0.002
+  min_plane_inlier_fraction: 0.5
+  max_table_tilt_deg: 3.0
+  size_relative_tolerance: 0.2
+  capture_timeout_s: 10.0
+  inference_timeout_s: 90.0
+topics:
+  rgb: /camera/camera/color/image_raw
+  aligned_depth: /camera/camera/aligned_depth_to_color/image_raw
+  camera_info: /camera/camera/color/camera_info

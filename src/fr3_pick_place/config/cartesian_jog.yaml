@@ -1,0 +1,5 @@
+# Standalone jogging geometry; no hand-eye calibration or board required.
+# Assumed 2 m square centered beneath the robot. Verify coverage in RViz.
+# Tabletop is 20 mm below fr3_link0; modeled thickness is 40 mm.
+table_collision_center: [0.0, 0.0, -0.040]
+table_collision_size: [2.0, 2.0, 0.040]

@@ -1,33 +1,21 @@
-extracted/
+# ROS 2 / colcon generated files
+/build/
+/install/
+/log/
 
-# Local Python environments and caches
-.venv/
+# Python generated files
 __pycache__/
 *.py[cod]
+.pytest_cache/
+.mypy_cache/
+*.egg-info/
 
-# Captures and extracted datasets (at any depth)
-data/
-/data[0-9]*/
-/data [0-9]*/
-captures/
-recordings/
-*.db3
-*.db3-shm
-*.db3-wal
-*.bag
-*.raw
-*.npy
-*.npz
-*.ply
-*.pcd
-/data*.zip
+# Local environments and editor settings
+.venv/
+venv/
+.env
+.vscode/
+.idea/
+.DS_Store
 
-# Generated analysis and pipeline results
-results/
-results_*/
-*_results/
-outputs/
-predictions/
-
-# Local backup files
-*.local-backup
+/src/fr3_pick_place/data/handeye/**/samples.json.images/

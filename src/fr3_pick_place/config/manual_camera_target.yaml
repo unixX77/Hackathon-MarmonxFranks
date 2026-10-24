@@ -1,0 +1,18 @@
+# Edit xyz_m for EVERY new detection (metres, in the selected optical frame).
+xyz_m: [0.0439, 0.0161, 0.5401]
+
+# Confirmed perception output frame:
+# RGB or aligned-to-color XYZ usually uses color; raw depth XYZ uses depth.
+camera_frame: camera_color_optical_frame
+handeye_file: fr3_d435_handeye.yaml  # relative to THIS file
+
+# Confirmed: xyz_m is on the TOP SURFACE, above the block center in X/Y.
+# Subtract half the upright 9.5 mm block height in ROBOT BASE axes.
+# Change this offset if the block height or detected point definition changes.
+point_to_block_center_world_m: [0.0, 0.0, -0.00275]
+
+# Keep the robot stationary from image capture until the script resolves this
+# point at startup. Reacquire XYZ after moving the camera/arm. Quaternion from
+# perception is ignored: TCP orientation is fixed at [1,0,0,0]. The block-center
+# to TCP offset comes from task.yaml. --poses is ignored in camera mode; IK is
+# seeded from current joints. The block remains upright and axis aligned.

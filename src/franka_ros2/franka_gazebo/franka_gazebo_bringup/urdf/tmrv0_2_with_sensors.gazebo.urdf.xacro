@@ -1,0 +1,80 @@
+<?xml version="1.0"?>
+<!--
+  Gazebo entry point for the TMR v0.2 with physical sensors.
+
+  Includes the franka_mobile_sensors description (base robot + sensor links),
+  ros2_control hardware interface for gazebo simulation, and Gazebo sensor plugins.
+-->
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro"
+       name="tmrv0_2_with_sensors_gazebo">
+
+  <!-- ================================================================ -->
+  <!-- Macro includes                                                    -->
+  <!-- ================================================================ -->
+
+  <!-- TMR with physical sensor links (macro — instantiated below with gazebo=true) -->
+  <xacro:include filename="$(find franka_mobile_sensors)/robots/tmrv0_2_with_sensors.xacro"/>
+
+  <!-- ros2_control hardware interface -->
+  <xacro:include filename="$(find franka_hardware)/ros2_control/tmrv0_2.ros2_control.xacro"/>
+
+  <!-- Gazebo sensor plugin macros -->
+  <xacro:include filename="$(find franka_gazebo_bringup)/urdf/sensors.xacro"/>
+
+  <!-- ================================================================ -->
+  <!-- Arguments                                                        -->
+  <!-- ================================================================ -->
+  <xacro:arg name="robot_type" default="tmrv0_2"/>
+  <xacro:arg name="robot_namespace" default=""/>
+
+  <!-- ================================================================ -->
+  <!-- Instantiate base robot + sensor suite (gazebo mode)              -->
+  <!-- ================================================================ -->
+  <xacro:tmrv0_2_with_sensors
+    robot_type="$(arg robot_type)"
+    reduced_version="false"
+    robot_namespace="$(arg robot_namespace)"/>
+
+  <!-- ================================================================ -->
+  <!-- ros2_control hardware interface (gazebo mode)                    -->
+  <!-- ================================================================ -->
+  <xacro:tmrv0_2_ros2_control
+    mobile_robot_type="$(arg robot_type)"
+    include_passive_base="true">
+    <hardware_plugin>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware_plugin>
+  </xacro:tmrv0_2_ros2_control>
+
+  <!-- gz_ros2_control system element (sibling of ros2_control) -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find franka_gazebo_bringup)/config/franka_gazebo_controllers.yaml</parameters>
+      <!-- Bring the controller_manager up under the robot namespace so the mobile-base
+           spawners find it at /${robot_namespace}/controller_manager. -->
+      <xacro:if value="${'$(arg robot_namespace)' != ''}">
+        <ros>
+          <namespace>/$(arg robot_namespace)</namespace>
+        </ros>
+      </xacro:if>
+    </plugin>
+  </gazebo>
+
+  <!-- ================= CAMERA SENSORS ================= -->
+  <xacro:franka_gazebo_camera link_reference="camera_front_link"
+                              sensor_name="camera_front"
+                              gz_topic="/camera_front/image_raw"/>
+  <xacro:franka_gazebo_camera link_reference="camera_rear_link"
+                              sensor_name="camera_rear"
+                              gz_topic="/camera_rear/image_raw"/>
+  <xacro:franka_gazebo_camera link_reference="camera_left_link"
+                              sensor_name="camera_left"
+                              gz_topic="/camera_left/image_raw"/>
+  <xacro:franka_gazebo_camera link_reference="camera_right_link"
+                              sensor_name="camera_right"
+                              gz_topic="/camera_right/image_raw"/>
+
+  <!-- ================= IMU SENSOR ================= -->
+  <xacro:franka_gazebo_body_imu link_reference="imu_body_link"
+                                gz_topic="/imu/data"/>
+</robot>

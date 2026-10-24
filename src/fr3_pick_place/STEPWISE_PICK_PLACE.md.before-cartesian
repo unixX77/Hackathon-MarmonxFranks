@@ -1,0 +1,67 @@
+# Staged measured-position pick and place (ROS 2 Humble)
+
+`pick_place_stepwise.py` uses the same `config/task.yaml` and helpers as
+`pick_place.py`. Install both scripts alongside one another. Camera detection
+and camera calibration are not used to choose pick/place coordinates.
+
+The six prompts are:
+
+1. Open an empty hand, approach above the brick, move to its grasp position.
+2. Grasp.
+3. Lift by the configured clearance.
+4. Move above the destination, then lower to the placement position.
+5. Open/release.
+6. Retreat above the placed brick, return to the starting arm joint pose.
+
+**Home means the measured starting arm joint pose**, recorded after settling;
+it is not a hard-coded Franka ready pose. Start from a known clear pose with an
+empty hand. Gripper homing must already have been completed.
+
+Each stage is planned before the prompt. Review the trajectories in RViz.
+Enter accepts the stage and, only with `--execute`, runs those exact plans.
+For stages containing multiple moves, Enter authorizes all moves described in
+that stage. The arm paths are pose-goal plans, not guaranteed straight lines;
+inspect the full swept paths. A stage with a planning failure never executes.
+One Enter cannot authorize the next stage: pending terminal keys are discarded
+before each prompt. Piped input is refused.
+
+The grasp target is the block centre at `fr3_hand_tcp`, fixed tool-down
+orientation, with the block aligned to base X/Y and jaw closing along base Y.
+Verify actual finger depth and table clearance. Use measured geometry and jaw
+settings, not guessed values. The script accepts at most 0.05 velocity and
+acceleration scaling; smaller values do not guarantee safe hardware operation.
+
+Hardware mode requires a measured camera/bracket collision object already
+attached to `fr3_hand_tcp`, `fr3_hand`, or `fr3_link8` in MoveIt's shared scene.
+Its default ID is `handeye_camera` (the hand-eye script's scene command creates
+that object when its collision measurements are filled in). An existing object
+can be selected using `--camera-object-id ID`. The script adds the configured
+table/block to planning requests and preserves other scene obstacles. Represent
+all other fixtures as well. It does not automatically publish camera TF.
+
+From `~/Documents/Hackathon/hackathon_ros2_ws`, source ROS Humble and the overlay.
+Run with your normal MoveIt stack active and no other competing arm controller.
+
+```bash
+# Plan only; Enter advances the virtual sequence without physical execution.
+ros2 run fr3_pick_place pick_place_stepwise.py \
+  --config src/fr3_pick_place/config/task.yaml
+
+# Hardware: Enter executes each stage. Use only after reviewing the setup.
+ros2 run fr3_pick_place pick_place_stepwise.py \
+  --config src/fr3_pick_place/config/task.yaml --execute
+```
+
+Plan-only mode can use fake hardware. Fake gripper publishing is state-only,
+so physical execution mode requires the real gripper action servers.
+
+At prompts, `q` exits. On failure, q, EOF, or Ctrl+C there is no automatic
+release or return home: an object could be suspended. Inspect hardware before
+retrying. Cancellation during actions uses the original task's best-effort
+action cancellation; keep the hardware stop accessible. Each trajectory start
+and endpoint is checked against fresh measured joints. Changes while waiting
+at a prompt cause an abort. These checks do not replace supervision or account
+for obstacles that are absent from the scene or move after planning.
+
+Configuration and camera geometry must be complete before hardware use. There
+is no automatic retry/resume after an aborted sequence.

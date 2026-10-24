@@ -1,0 +1,304 @@
+#!/usr/bin/env python3
+"""Six operator-gated stages; plan only unless --execute is supplied.
+
+Install beside pick_place.py. Home is the measured starting arm joint pose.
+Each stage is planned before its prompt; Enter executes those exact trajectories.
+Pose-goal paths are collision checked, but are not guaranteed Cartesian lines.
+"""
+import argparse
+import copy
+import math
+import sys
+import time
+
+import rclpy
+import yaml
+from rclpy.action import ActionClient
+from rclpy.qos import qos_profile_sensor_data
+from sensor_msgs.msg import JointState
+from moveit_msgs.action import ExecuteTrajectory, MoveGroup
+from moveit_msgs.msg import (
+    AttachedCollisionObject, CollisionObject, Constraints, DisplayTrajectory, JointConstraint,
+    MoveItErrorCodes, PlanningSceneComponents,
+)
+from moveit_msgs.srv import GetPlanningScene
+
+from pick_place import Task, box, validate
+
+ARM_JOINTS = [f'fr3_joint{i}' for i in range(1, 8)]
+BLOCK = 'fr3_demo_block'
+
+
+class OperatorStop(Exception):
+    pass
+
+
+def confirm(label, execute):
+    # Discard keys pressed during planning/motion, so one old Enter cannot
+    # accidentally authorize the next stage. Non-terminal input is refused.
+    if not sys.stdin.isatty():
+        raise OperatorStop('An interactive terminal is required.')
+    import termios
+    termios.tcflush(sys.stdin.fileno(), termios.TCIFLUSH)
+    verb = 'EXECUTE' if execute else 'accept this planning-only stage'
+    while True:
+        answer = input(f'\n{label}\nEnter to {verb}; q to stop: ').strip().lower()
+        if answer == 'q':
+            raise OperatorStop('Stopped by operator.')
+        if answer == '':
+            return
+        print('Press Enter or type q.')
+
+
+def check_start(positions, trajectory, tolerance=0.01):
+    jt = trajectory.joint_trajectory
+    if not jt.points or not jt.joint_names:
+        raise RuntimeError('Planner returned an empty trajectory.')
+    first = jt.points[0].positions
+    if len(first) != len(jt.joint_names):
+        raise RuntimeError('Invalid trajectory start point.')
+    if any(name not in positions or not math.isfinite(positions[name])
+           or abs(positions[name] - q) > tolerance
+           for name, q in zip(jt.joint_names, first)):
+        raise RuntimeError('Arm no longer matches the approved trajectory start. Stop and replan.')
+
+
+class StepwiseTask(Task):
+    def __init__(self, node, config, execute, camera_object_id):
+        super().__init__(node, config, execute)
+        self.hardware = execute
+        self.camera_object_id = camera_object_id
+        self.latest = {}
+        self.latest_stamp = None
+        self.received = 0.0
+        self.commands = []
+        self.label = ''
+        self.preview = node.create_publisher(DisplayTrajectory, 'display_planned_path', 10)
+        self.subscription = node.create_subscription(
+            JointState, 'joint_states', self.on_joints, qos_profile_sensor_data)
+        self.executor = None
+        if execute:
+            self.require_camera()
+            self.executor = ActionClient(node, ExecuteTrajectory, 'execute_trajectory')
+            if not self.executor.wait_for_server(timeout_sec=10):
+                raise RuntimeError('MoveIt execute_trajectory action unavailable.')
+        self.joints = self.settled_snapshot()
+        self.home = {name: self.joints[name] for name in ARM_JOINTS}
+
+    def on_joints(self, msg):
+        values = dict(zip(msg.name, msg.position))
+        if all(name in values and math.isfinite(values[name]) for name in ARM_JOINTS):
+            self.latest = {name: q for name, q in values.items() if math.isfinite(q)}
+            self.latest_stamp = msg.header.stamp.sec + msg.header.stamp.nanosec * 1e-9
+            self.received = time.monotonic()
+
+    def snapshot(self, timeout=5.0):
+        # Collect after waiting at the prompt; never use an old cached pose.
+        started = time.monotonic()
+        while time.monotonic() - started < timeout:
+            rclpy.spin_once(self.node, timeout_sec=0.05)
+            now = self.node.get_clock().now().nanoseconds * 1e-9
+            if (self.received >= started and self.latest_stamp is not None
+                    and -0.05 <= now - self.latest_stamp <= 0.5):
+                return dict(self.latest)
+        raise RuntimeError('No fresh timestamped arm joint states; inspect the robot connection.')
+
+    def settled_snapshot(self):
+        started = time.monotonic()
+        stable_since = None
+        anchor = None
+        while time.monotonic() - started < 8.0:
+            q = self.snapshot()
+            if anchor is None or any(abs(q[n] - anchor[n]) > 0.002 for n in ARM_JOINTS):
+                anchor, stable_since = q, time.monotonic()
+            if time.monotonic() - stable_since >= 1.0:
+                return q
+        raise RuntimeError('Arm did not settle; inspect the robot before continuing.')
+
+    def require_camera(self):
+        req = GetPlanningScene.Request()
+        req.components.components = PlanningSceneComponents.ROBOT_STATE_ATTACHED_OBJECTS
+        scene = self.wait(self.scene_client.call_async(req), 10).scene
+        camera = next((o for o in scene.robot_state.attached_collision_objects
+                       if o.object.id == self.camera_object_id), None)
+        if (camera is None or not (camera.object.primitives or camera.object.meshes)
+                or camera.link_name not in ('fr3_hand_tcp', 'fr3_hand', 'fr3_link8')):
+            raise RuntimeError(
+                f'Attached camera/bracket collision object {self.camera_object_id!r} missing '
+                'from the wrist/hand. Add measured geometry to MoveIt first.')
+
+    def action(self, client, goal):
+        if client is not self.arm:
+            return super().action(client, goal)
+        # All arm requests are plan-only, including in hardware mode.
+        goal.planning_options.plan_only = True
+        scene = goal.planning_options.planning_scene_diff
+        carrying = any(o.object.id == BLOCK and o.object.operation == CollisionObject.ADD
+                       for o in scene.robot_state.attached_collision_objects)
+        if carrying:
+            # The same block cannot simultaneously be attached and in the world.
+            scene.world.collision_objects.append(
+                CollisionObject(id=BLOCK, operation=CollisionObject.REMOVE))
+        else:
+            removed = AttachedCollisionObject(link_name='fr3_hand_tcp')
+            removed.object.id = BLOCK
+            removed.object.operation = CollisionObject.REMOVE
+            scene.robot_state.attached_collision_objects.append(copy.deepcopy(removed))
+            goal.request.start_state.attached_collision_objects.append(removed)
+        result = super().action(client, goal)
+        if result.error_code.val != MoveItErrorCodes.SUCCESS:
+            raise RuntimeError(f'{self.label}: planning failed ({result.error_code.val}).')
+        trajectory = result.planned_trajectory
+        jt = trajectory.joint_trajectory
+        if not jt.points or not set(ARM_JOINTS).issubset(jt.joint_names):
+            raise RuntimeError(f'{self.label}: incomplete/empty arm trajectory.')
+        if not any(kind == 'arm' for kind, _, _ in self.commands):
+            self.preview_start = copy.deepcopy(result.trajectory_start)
+        self.commands.append(('arm', self.label, copy.deepcopy(trajectory)))
+        return result
+
+    def motion(self, label, xyz, carrying=False, placed=False):
+        self.label = label
+        super().motion(label, xyz, carrying=carrying, placed=placed)
+
+    def hand(self, close=False):
+        # During stage preparation, model finger width and queue the action.
+        super().hand(close=close)
+        self.commands.append(('hand', 'Grasp' if close else 'Open hand', close))
+
+    def plan_home(self):
+        self.label = 'Return to starting arm joint pose (home)'
+        goal = MoveGroup.Goal()
+        req = goal.request
+        req.group_name = 'fr3_arm'
+        req.allowed_planning_time = 10.0
+        req.num_planning_attempts = 5
+        req.max_velocity_scaling_factor = float(self.c['velocity_scale'])
+        req.max_acceleration_scaling_factor = float(self.c['acceleration_scale'])
+        req.start_state.is_diff = True
+        req.start_state.joint_state.name = list(self.joints)
+        req.start_state.joint_state.position = list(self.joints.values())
+        req.goal_constraints = [Constraints(joint_constraints=[JointConstraint(
+            joint_name=name, position=q, tolerance_above=0.005,
+            tolerance_below=0.005, weight=1.0) for name, q in self.home.items()])]
+        scene = goal.planning_options.planning_scene_diff
+        scene.is_diff = True
+        scene.robot_state.is_diff = True
+        scene.allowed_collision_matrix = copy.deepcopy(self.acm)
+        scene.world.collision_objects = [
+            box('fr3_demo_table', self.c['table_size'], self.c['table_center']),
+            box(BLOCK, self.c['block_size'], self.c['place']),
+        ]
+        result = self.action(self.arm, goal)
+        jt = result.planned_trajectory.joint_trajectory
+        self.joints.update(zip(jt.joint_names, jt.points[-1].positions))
+
+    def prepare_stage(self, stage):
+        pick, place = self.c['pick'], self.c['place']
+        above_pick, above_place = list(pick), list(place)
+        above_pick[2] += self.c['clearance']
+        above_place[2] += self.c['clearance']
+        if stage == 1:
+            self.hand()
+            self.motion('Approach above brick', above_pick)
+            self.motion('Move to grasp position', pick)
+        elif stage == 2:
+            self.hand(close=True)
+        elif stage == 3:
+            self.motion('Lift brick', above_pick, carrying=True)
+        elif stage == 4:
+            self.motion('Transfer above destination', above_place, carrying=True)
+            self.motion('Lower to placement position', place, carrying=True)
+        elif stage == 5:
+            self.hand()
+        elif stage == 6:
+            self.motion('Retreat above placed brick', above_place, placed=True)
+            self.plan_home()
+        else:
+            raise ValueError('Unknown stage')
+
+    def execute_commands(self):
+        self.require_camera()
+        for kind, label, payload in self.commands:
+            self.node.get_logger().info(label)
+            if kind == 'hand':
+                # Bypass the queue-building override; this is the real action.
+                Task.hand(self, close=payload)
+                self.settled_snapshot()
+            else:
+                check_start(self.settled_snapshot(), payload)
+                goal = ExecuteTrajectory.Goal(trajectory=payload, controllers=['fr3_arm_controller'])
+                result = self.action(self.executor, goal)
+                if result.error_code.val != MoveItErrorCodes.SUCCESS:
+                    raise RuntimeError(f'{label}: execution failed ({result.error_code.val}).')
+                q = self.settled_snapshot()
+                jt = payload.joint_trajectory
+                if any(abs(q[n] - value) > 0.01
+                       for n, value in zip(jt.joint_names, jt.points[-1].positions)):
+                    raise RuntimeError(f'{label}: measured endpoint differs from planned endpoint.')
+
+    def run(self):
+        labels = [
+            '1/6 Open empty hand, approach above brick, move to grasp position',
+            '2/6 Grasp brick',
+            '3/6 Lift brick',
+            '4/6 Transfer above destination, lower to placement position',
+            '5/6 Release brick',
+            '6/6 Retreat, then return to starting arm joint pose (home)',
+        ]
+        print('HARDWARE EXECUTION' if self.hardware else 'PLANNING ONLY: no arm or gripper execution')
+        print('Start with an empty hand. Home is the starting joint pose:', self.home)
+        print('Review each stage in RViz before Enter. Paths are not guaranteed straight lines.')
+        for stage, label in enumerate(labels, 1):
+            if self.hardware:
+                self.joints = self.settled_snapshot()
+                expected_start = dict(self.joints)
+            self.commands = []
+            # Existing planning logic seeds each subplan from the last endpoint.
+            self.execute = False
+            self.prepare_stage(stage)
+            paths = [payload for kind, _, payload in self.commands if kind == 'arm']
+            if paths:
+                # Publish all subpaths together, rather than leaving only the
+                # final subpath visible when a stage includes approach+descent.
+                self.preview.publish(DisplayTrajectory(
+                    trajectory_start=self.preview_start, trajectory=paths))
+            confirm(label, self.hardware)
+            if self.hardware:
+                actual = self.settled_snapshot()
+                if any(abs(actual[n] - expected_start[n]) > 0.01 for n in ARM_JOINTS):
+                    raise RuntimeError('Arm moved while waiting for approval; stop and replan.')
+                self.execute = True
+                self.execute_commands()
+            print(f'Stage {stage}/6 complete.')
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--config', required=True)
+    parser.add_argument('--execute', action='store_true', help='Enable physical arm AND gripper actions')
+    parser.add_argument('--camera-object-id', default='handeye_camera',
+                        help='Required attached camera/bracket collision object for hardware execution')
+    args, ros_args = parser.parse_known_args()
+    with open(args.config, encoding='utf-8') as stream:
+        config = validate(yaml.safe_load(stream))
+    if max(config['velocity_scale'], config['acceleration_scale']) > 0.05:
+        parser.error('For this staged script use velocity/acceleration scaling at most 0.05.')
+    rclpy.init(args=ros_args)
+    node = rclpy.create_node('fr3_pick_place_stepwise')
+    try:
+        StepwiseTask(node, config, args.execute, args.camera_object_id).run()
+        node.get_logger().info('Six stages complete.')
+    except (OperatorStop, EOFError, KeyboardInterrupt):
+        node.get_logger().warning('Stopped. No automatic gripper release or return home. Inspect the robot.')
+    except Exception as exc:
+        node.get_logger().error(f'Aborted: {exc}. No automatic release or recovery.')
+        return 1
+    finally:
+        node.destroy_node()
+        rclpy.shutdown()
+    return 0
+
+
+if __name__ == '__main__':
+    raise SystemExit(main())

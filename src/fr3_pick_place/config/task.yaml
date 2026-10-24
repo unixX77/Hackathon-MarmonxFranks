@@ -1,0 +1,59 @@
+# Taught TCP targets in fr3_link0, metres; NOT block-centre coordinates.
+# Copied from taught_tcp_poses.json; --poses FILE can override targets/orientation.
+# Block: X=31.5 mm, Y=15.5 mm, Z=9.5 mm, on the configured table.
+# Its centre is directly above the taught TCP in X/Y. Offset below is in WORLD axes.
+# When changing grasp height, update the offset or load --poses to recompute it.
+# Place is derived +50 mm Y, not physically taught. Verify geometry and paths in RViz.
+# Grasp settings match the operator-tested action; open_width is total finger gap.
+pick:
+- 0.3176477189209497
+- 0.0034318330884698252
+- -0.006351083289797249
+place:
+- 0.3176477189209497
+- 0.05343183308846983
+- -0.006351083289797249
+tcp_orientation_xyzw:
+- 0.9996230587924004
+- 0.0034705627727596106
+- -0.027228687986355676
+- -0.0005422869233153593
+block_size:
+- 0.0315
+- 0.0155
+- 0.0095
+block_center_offset_world:
+- 0.0
+- 0.0
+- -0.00889891671020275
+table_center:
+- 0.0
+- 0.0
+- -0.04
+table_size:
+- 2.0
+- 2.0
+- 0.04
+clearance: 0.1
+# Release with the block nominally 2 mm above the table, then let it settle.
+place_release_clearance_m: 0.002
+velocity_scale: 0.02
+acceleration_scale: 0.02
+grasp_force: 10.0
+grasp_width: 0.015
+gripper_speed: 0.01
+grasp_epsilon_inner: 0.002
+grasp_epsilon_outer: 0.002
+open_width: 0.0206
+endpoint_z_tolerance_m: 0.002
+endpoint_lateral_tolerance_m: 0.002
+endpoint_orientation_tolerance_deg: 0.5
+# Reference posture for approach IK; transfer IK uses measured current joints.
+approach_seed_joints:
+  fr3_joint1: 0.007998107001185417
+  fr3_joint2: 0.36866000294685364
+  fr3_joint3: 0.005816848482936621
+  fr3_joint4: -2.855818748474121
+  fr3_joint5: 0.01643393188714981
+  fr3_joint6: 3.1700263023376465
+  fr3_joint7: 0.7755210995674133
