@@ -1,0 +1,42 @@
+# ChArUco board config. square_length/marker_length MUST be the measured printed values (metres).
+base_frame: fr3_link0
+ee_frame: fr3_hand_tcp
+camera_mount_frame: camera_link
+image_topic: /camera/camera/color/image_raw
+camera_info_topic: /camera/camera/color/camera_info
+joint_topic: /joint_states
+board:
+  type: charuco
+  dictionary: DICT_5X5_100
+  columns: 7
+  rows: 5
+  square_length: 0.0366
+  marker_length: 0.0272
+  scale_x: 1.002     # per-axis print correction (fitted from one view; ratio sy/sx = 0.996)
+  scale_y: 0.998
+min_markers: 5
+max_reprojection_px: 1.0
+min_ambiguity_gap_px: 0.2
+settle_seconds: 1.0
+max_joint_drift_rad: 0.002
+max_sample_age_seconds: 0.5
+min_samples: 12
+min_rotation_span_deg: 15.0
+max_consistency_translation_m: 0.005
+max_consistency_rotation_deg: 1.0
+velocity_scale: 0.03
+acceleration_scale: 0.03
+camera_collision_center: null
+camera_collision_size: null
+camera_touch_links:
+- fr3_hand
+table_collision_center: null
+table_collision_size: null
+board_collision_center: null
+board_collision_size: null
+min_charuco_corners: 10
+# Capture guards: samples outside these ranges are refused, so every saved pose is useful.
+min_view_angle_deg: 15.0
+max_view_angle_deg: 45.0
+min_distance_m: 0.30
+max_distance_m: 0.50

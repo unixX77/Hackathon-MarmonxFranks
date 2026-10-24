@@ -1,0 +1,36 @@
+# This is eye-in-hand: camera RIGIDLY attached to hand, target FIXED in world.
+base_frame: fr3_link0
+ee_frame: fr3_hand_tcp       # may use fr3_link8 instead; stay consistent
+camera_mount_frame: camera_link  # RealSense root; check actual /tf_static names
+image_topic: /camera/camera/color/image_raw
+camera_info_topic: /camera/camera/color/camera_info
+joint_topic: /joint_states
+board:
+  dictionary: DICT_4X4_50
+  columns: 5
+  rows: 4
+  marker_length: 0.034      # metres; measured printed black marker edge: 34 mm
+  marker_separation: 0.0099 # metres; caliper-measured gap 9.9 mm (grid 210x165 mm)
+min_markers: 5
+max_reprojection_px: 1.0
+min_ambiguity_gap_px: 0.2  # reject two similarly plausible planar PnP solutions
+settle_seconds: 1.0
+max_joint_drift_rad: 0.002
+max_sample_age_seconds: 0.5
+min_samples: 12
+min_rotation_span_deg: 15.0
+max_consistency_translation_m: 0.005  # quality gates, NOT accuracy guarantees
+max_consistency_rotation_deg: 1.0
+# Automation consumes only recorded joint poses; it never invents poses.
+velocity_scale: 0.03
+acceleration_scale: 0.03
+# Required only for scene/replay. Measure conservative bounding boxes in metres.
+# Camera box should include mount/bracket and a margin; cable routing still
+# requires visual supervision. Camera centre is relative to ee_frame.
+camera_collision_center: null  # [x,y,z] in ee_frame
+camera_collision_size: null    # [x,y,z] axis-aligned bounding box in ee_frame
+camera_touch_links: [fr3_hand] # only actual camera mounting contact links
+table_collision_center: null   # [x,y,z] in base_frame
+table_collision_size: null
+board_collision_center: null   # [x,y,z] in base_frame; include board support
+board_collision_size: null

@@ -1,0 +1,14 @@
+# REQUIRED: replace null values with measurements, in metres in fr3_link0.
+# pick/place specify BLOCK CENTRE, not the table surface or flange position.
+pick: null                 # [x, y, z]
+place: null                # [x, y, z]
+block_size: null           # [x, y, z]; jaws close across block's Y dimension
+table_center: null         # [x, y, z] at the CENTRE of the collision box
+table_size: null           # [length, width, thickness]
+clearance: 0.10
+velocity_scale: 0.05
+acceleration_scale: 0.05
+grasp_force: 10.0          # N; tune for the block material and mass
+grasp_width: 0.015        # m; your previously successful total jaw width
+gripper_speed: 0.02       # m/s
+open_width: 0.08          # total distance between fingers, m
