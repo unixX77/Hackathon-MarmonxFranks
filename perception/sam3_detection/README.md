@@ -141,7 +141,8 @@ Output in `data/top_layer_bricks/<recording>/<frame>/`:
 | `final_semantic.png` | uint8 colour class per pixel |
 | `overlay.png` | top-layer bricks as coloured patches with white boundaries and the fitted footprints (yellow; magenta for `irregular`) |
 | `preview.png` | the four panels shown above |
-| `bricks.json` | per brick: status (`brick`, `split`, `partial`, `irregular`), colour, quality, measured size, height, layer, centre in the camera frame (m), yaw on the table, footprint in pixels |
+| `bricks.json` | per brick: status (`brick`, `split`, `partial`, `irregular`), colour, quality, measured size, height, layer, centre in the camera frame (m), yaw on the table, footprint in pixels, and the 3D box in the camera frame (centre, size, rotation, 8 corners) |
+| `poses.csv` | one row per brick: box centre `cx, cy, cz`, top-face centre, yaw, size, and the 8 box corners `c0`–`c7` (top face 0–3, bottom face 4–7), all in the camera frame in metres |
 
 ### Results
 

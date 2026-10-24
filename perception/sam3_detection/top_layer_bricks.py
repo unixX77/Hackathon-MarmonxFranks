@@ -19,7 +19,10 @@ Outputs in <out>/<recording>/<frame>/:
   final_semantic.png   uint8 colour class per pixel (see segment_lego_sam3_single_prompt.py)
   overlay.png          top-layer bricks as coloured patches with the fitted footprints
   preview.png          input | all SAM3 bricks | top layer from depth | bricks after the size prior
-  bricks.json          per brick: id, status, colour, quality, measured size, fitted pose
+  bricks.json          per brick: id, status, colour, quality, measured size, fitted pose,
+                       3D box (centre, size, rotation, 8 corners) in the camera frame
+  poses.csv            one row per brick: box centre, top-face centre, yaw, size and the
+                       8 box corners (top face 0-3, bottom face 4-7) in the camera frame (m)
 """
 import argparse
 import json
@@ -50,17 +53,21 @@ def mask_on_plane(mask, K_inv, normal, offset, height, e1, e2):
     return u, v, np.stack([e1 @ points, e2 @ points], 1) * 1000
 
 
+def to_camera(q_mm, normal, offset, height, e1, e2):
+    """In-plane mm coordinates at `height` above the table -> 3D points in the camera frame (m)."""
+    q = np.atleast_2d(np.asarray(q_mm, np.float64)) / 1000
+    return q[:, :1] * e1 + q[:, 1:] * e2 + (height - offset) * normal
+
+
 def to_pixels(q_mm, K, normal, offset, height, e1, e2):
     """In-plane mm coordinates at `height` above the table -> image pixels."""
-    q = np.asarray(q_mm, np.float64) / 1000
-    points = q[:, :1] * e1 + q[:, 1:] * e2 + (height - offset) * normal
-    p = (K @ points.T).T
+    p = (K @ to_camera(q_mm, normal, offset, height, e1, e2).T).T
     return p[:, :2] / p[:, 2:]
 
 
 def apply_size_prior(instance, kept_records, sam_records, calibration, report, args):
     """Measure, split and fit every kept top-layer mask; return the brick id image and brick records."""
-    L, W, _ = args.brick_size_mm
+    L, W, H = args.brick_size_mm
     tol = args.size_tol
     K = np.array(calibration['aligned_depth_intrinsics']['K'], np.float64)
     K_inv = np.linalg.inv(K)
@@ -110,12 +117,36 @@ def apply_size_prior(instance, kept_records, sam_records, calibration, report, a
             fl, fw = (L, W) if status != 'irregular' else (length, width)
             corners = [centre_q + sx * axis * fl / 2 + sy * np.array([-axis[1], axis[0]]) * fw / 2
                        for sx, sy in ((1, 1), (-1, 1), (-1, -1), (1, -1))]
-            centre_cam = (centre_q[0] * e1 + centre_q[1] * e2) / 1000 + (h - offset) * normal
+            # 3D box in the camera frame: top face at the measured height, bottom one brick height lower
+            bottom = h - H / 1000
+            top_corners = to_camera(corners, normal, offset, h, e1, e2)
+            bottom_corners = to_camera(corners, normal, offset, bottom, e1, e2)
+            long_cam = axis[0] * e1 + axis[1] * e2
+            rotation = np.stack([long_cam, np.cross(normal, long_cam), normal], 1)  # columns: long, short, up
             bricks.append({**base, 'id': ident,
-                           'centre_cam_m': np.round(centre_cam, 4).tolist(),
+                           'centre_cam_m': np.round(to_camera(centre_q, normal, offset, h, e1, e2)[0], 4).tolist(),
+                           'box_centre_cam_m': np.round(
+                               to_camera(centre_q, normal, offset, (h + bottom) / 2, e1, e2)[0], 4).tolist(),
+                           'box_size_m': [round(fl / 1000, 4), round(fw / 1000, 4), round(H / 1000, 4)],
+                           'box_rotation_cam': np.round(rotation, 4).tolist(),
+                           'box_corners_cam_m': np.round(np.vstack([top_corners, bottom_corners]), 4).tolist(),
                            'yaw_deg_table': round(float(long_deg) % 180, 1),
                            'footprint_px': np.round(to_pixels(corners, K, normal, offset, h, e1, e2), 1).tolist()})
     return bricks_img, bricks
+
+
+def write_poses_csv(path, bricks):
+    """One row per brick: box centre, top-face centre, yaw and the 8 box corners, in the camera frame (m).
+    Corners 0-3 are the top face, 4-7 the bottom face below them, in the same order."""
+    header = ['id', 'status', 'colour', 'quality', 'cx', 'cy', 'cz', 'top_cx', 'top_cy', 'top_cz',
+              'yaw_deg_table', 'length_m', 'width_m', 'height_m']
+    header += [f'c{i}_{a}' for i in range(8) for a in 'xyz']
+    rows = []
+    for b in bricks:
+        rows.append([b['id'], b['status'], b.get('colour', ''), b.get('quality', ''),
+                     *b['box_centre_cam_m'], *b['centre_cam_m'], b['yaw_deg_table'], *b['box_size_m'],
+                     *np.ravel(b['box_corners_cam_m'])])
+    path.write_text('\n'.join(','.join(str(v) for v in row) for row in [header] + rows) + '\n')
 
 
 def main():
@@ -195,6 +226,7 @@ def main():
         'size_tol': args.size_tol, 'top_height_m': report['top_height_m'],
         'table_normal': report['table_normal'], 'table_offset_m': report['table_offset_m'],
         'status_counts': counts, 'bricks': bricks}, indent=2))
+    write_poses_csv(output / 'poses.csv', [b for b in bricks if b['id']])
     n_final = sum(1 for b in bricks if b['id'])
     print(f'{len(kept)} top-layer masks -> {n_final} bricks {counts} -> {output}')
 
