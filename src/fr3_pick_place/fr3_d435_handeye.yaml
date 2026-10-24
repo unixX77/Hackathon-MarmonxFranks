@@ -1,0 +1,53 @@
+# Hand-eye (eye-in-hand) calibration -- FR3 v2 + Franka Hand + Franka 3D-printed D435 mount + Intel RealSense D435
+# Nominal CAD-derived extrinsics (no measurement). Units: metres / radians. rpy = fixed-axis XYZ (URDF convention).
+# quaternion order: x y z w.  T_A_B = pose of frame B expressed in frame A.
+#
+# Assembly assumptions (Franka "3D Printable Camera Mount Guide"):
+#  * Mount bolted through one of the Franka Hand's two M6 holes (replace M6x12 with M6x28), the hole on the
+#    fr3_hand +X side (hand frame = fr3_link8 rotated -45 deg about z). Mount arc wraps the hand's mounting plate,
+#    inner lip sits flush against the hand body.
+#  * D435 back plate on the mount's camera arm with 2x M3x10 (rear 45 mm hole pair); lenses facing along +z of the
+#    hand (towards the fingers); camera top edge pointing away from the hand; long axis parallel to finger travel.
+#  * Camera internal offsets from realsense2_description/_d435.urdf.xacro (depth origin = left IR, 4.3 mm behind glass,
+#    color 15 mm left of depth). realsense-ros publishes camera_link -> optical frames with factory extrinsics, so the
+#    transform to publish yourself is parent -> camera_link.
+
+parent_frame: fr3_link8          # flange (libfranka "F" frame)
+child_frame: camera_link
+
+T_link8_camera_link:
+  translation: [0.04773, 0.022981, 0.06075]
+  quaternion_xyzw: [0.653281, 0.270598, 0.653281, -0.270598]
+  matrix: [[-0.0, 0.707107, 0.707107, 0.04773], [-0.0, -0.707107, 0.707107, 0.022981], [1.0, -0.0, 0.0, 0.06075], [0.0, 0.0, 0.0, 1.0]]
+
+T_link8_camera_color_optical_frame:
+  translation: [0.058336, 0.012374, 0.06075]
+  quaternion_xyzw: [0.0, -0.0, 0.92388, 0.382683]
+  rpy: [0.0, -0.0, 2.356194]
+  matrix: [[-0.707107, -0.707107, 0.0, 0.058336], [0.707107, -0.707107, -0.0, 0.012374], [0.0, 0.0, 1.0, 0.06075], [0.0, 0.0, 0.0, 1.0]]
+
+T_link8_camera_depth_optical_frame:
+  translation: [0.04773, 0.022981, 0.06075]
+  quaternion_xyzw: [0.0, -0.0, 0.92388, 0.382683]
+  rpy: [0.0, -0.0, 2.356194]
+  matrix: [[-0.707107, -0.707107, 0.0, 0.04773], [0.707107, -0.707107, -0.0, 0.022981], [0.0, 0.0, 1.0, 0.06075], [0.0, 0.0, 0.0, 1.0]]
+
+# Same camera, expressed in the hand frames
+T_hand_camera_color_optical_frame:
+  translation: [0.05, -0.0325, 0.06075]
+  quaternion_xyzw: [0.0, -0.0, 0.707107, 0.707107]
+T_hand_camera_depth_optical_frame:
+  translation: [0.05, -0.0175, 0.06075]
+  quaternion_xyzw: [0.0, -0.0, 0.707107, 0.707107]
+T_hand_tcp_camera_color_optical_frame:     # libfranka EE frame (hand_tcp, 0.1034 m below flange)
+  translation: [0.05, -0.0325, -0.04265]
+  quaternion_xyzw: [0.0, -0.0, 0.707107, 0.707107]
+T_hand_tcp_camera_depth_optical_frame:
+  translation: [0.05, -0.0175, -0.04265]
+  quaternion_xyzw: [0.0, -0.0, 0.707107, 0.707107]
+
+# If your physical build differs, T_link8_camera_color_optical_frame becomes:
+alternatives_T_link8_camera_color_optical_frame:
+  mount_+x_camera_top_toward_hand:  {translation: [0.012374, 0.058336, 0.06075], quaternion_xyzw: [-0.0, -0.0, -0.382683, 0.92388]}
+  mount_-x_camera_top_away:  {translation: [-0.058336, -0.012374, 0.06075], quaternion_xyzw: [-0.0, -0.0, -0.382683, 0.92388]}
+  mount_-x_camera_top_toward_hand:  {translation: [-0.012374, -0.058336, 0.06075], quaternion_xyzw: [0.0, -0.0, 0.92388, 0.382683]}
