@@ -1,4 +1,143 @@
-# SAM 3 LEGO brick detection
+# RGB-D top-layer LEGO detection
+
+The official baseline is [`segment_lego_rgbd_topplane.py`](segment_lego_rgbd_topplane.py), the **top-plane-first V2** detector. It finds visible 2x4 bricks on the highest supported layer and returns an oriented bounding box and camera-frame 3D position for each brick. It deliberately does **not** classify brick colour or quality.
+
+The key design choice is that SAM 3 is evidence, not a hard detection gate. SAM supplies reliable brick-shaped seeds, while aligned depth identifies the physical top plane and a regular LEGO lattice recovers bricks that SAM missed or merged. The complete 69-recording run over `data3` and `data4` is saved in [`results_rgbd_topplane_v2/`](results_rgbd_topplane_v2/).
+
+## Requirements
+
+The baseline was tested with Intel RealSense D435 aligned RGB-D recordings, an NVIDIA RTX 4080 SUPER with CUDA 12.8, Python 3.12.15, PyTorch 2.10.0+cu128, torchvision 0.25.0+cu128, SAM 3 commit `7f473cf`, transformers 5.20.1, OpenCV 4.11.0, NumPy 1.26.4, and Pillow. Gated access to the [`facebook/sam3`](https://huggingface.co/facebook/sam3) weights is required.
+
+Full installation instructions are in the [perception README](../README.md#sam-3-setup). Keep the multi-gigabyte checkpoint on the cache volume:
+
+```bash
+HF_HOME=/cache/s95vkond/huggingface \
+HF_TOKEN_PATH=/home_domuser2/s95vkond/.cache/huggingface/token
+```
+
+## Input layout
+
+```text
+extracted/
+├── data3/<recording>/
+│   ├── camera_info.json
+│   ├── rgb/000000.png ...
+│   └── depth/000000.png ...
+└── data4/<recording>/
+    ├── camera_info.json
+    ├── rgb/000000.png ...
+    └── depth/000000.png ...
+```
+
+`camera_info.json` must contain the RGB-aligned depth scale and camera intrinsics used to convert depth pixels into camera-frame XYZ points.
+
+## Current architecture
+
+```text
+RGB frame ──> SAM 3 masks ──> rectangular brick seeds ─────────────┐
+                                                                   │
+Depth frames ─> temporal median ─> XYZ cloud ─> support plane      ├─> active orientation
+                                      └──────> height histogram    │   + size calibration
+                                                   └─> top plane ──┘
+                                                              │
+                                     lattice phase + candidate cells
+                                                              │
+                                    top-plane coverage validation
+                                                              │
+                                     oriented top boxes + camera XYZ
+```
+
+1. **Temporal depth filtering:** a median of nine nearby depth frames suppresses RealSense holes and transient noise.
+2. **Support-plane fitting:** RANSAC fits the table plane. Pixel heights are measured relative to it, so camera tilt does not become stack height.
+3. **Top-surface extraction:** a 1 mm height histogram proposes planes from highest to lowest. A peak needs sufficient pixel support and overlap with a rectangular LEGO-shaped SAM seed, rejecting high outliers and visible lower layers.
+4. **Active-layer geometry:** only masks overlapping the selected plane estimate orientation. This handles the 90-degree rotation between adjacent layers. Normal and rectangular merged masks can support the plane.
+5. **Per-dataset calibration:** the first complete scene estimates the projected 2x4 brick dimensions. Reusing them prevents sparse end states from shrinking boxes.
+6. **Lattice reconstruction:** seed centres determine the regular LEGO lattice phase. Candidate cells are generated over the whole top surface, not only where SAM produced instances.
+7. **Depth validation:** a cell is kept when at least 55% of its oriented rectangle lies on the top plane. This recovers missed bricks, splits merged masks, and rejects irregular or lower-layer regions.
+
+SAM is therefore used to establish brick geometry, while depth is the final evidence for membership in the top layer. A final box is tagged `sam+lattice` when it overlaps SAM evidence and `depth+lattice` when it was recovered primarily from depth.
+
+## Run the official baseline
+
+```bash
+cd perception/sam3_detection
+HF_HOME=/cache/s95vkond/huggingface \
+HF_TOKEN_PATH=/home_domuser2/s95vkond/.cache/huggingface/token \
+conda run -n sam3 python segment_lego_rgbd_topplane.py \
+  /cache/s95vkond/rgbd_data/extracted/extracted \
+  --datasets data3 data4 \
+  --out results_rgbd_topplane_v2
+```
+
+| Option | Default | Purpose |
+|---|---:|---|
+| `--temporal-frames` | 9 | depth frames in the temporal median |
+| `--plane-threshold-mm` | 4.0 | support-plane RANSAC tolerance |
+| `--min-object-height-mm` | 20.0 | ignore geometry close to the table |
+| `--height-bin-mm` | 1.0 | height histogram resolution |
+| `--top-plane-band-mm` | 2.5 | accepted distance around the selected plane |
+| `--min-top-plane-pixels` | 500 | minimum support for a height peak |
+| `--seed-min-coverage` | 0.55 | top-plane overlap required from a seed |
+| `--orientation-tolerance-deg` | 15 | allowed orientation deviation |
+| `--candidate-min-coverage` | 0.55 | top-plane coverage required for a final box |
+| `--brick-long-px`, `--brick-short-px` | auto | optional fixed projected brick dimensions |
+
+Use `--recordings <name ...>`, `--max-recordings N`, or `--frame N` for a smaller run.
+
+## Baseline output
+
+Each frame is stored under `<output>/<dataset>/<recording>/<frame>/`:
+
+| File | Content |
+|---|---|
+| `result.png` | RGB with final oriented top-layer boxes |
+| `comparison.png` | original and result side by side |
+| `top_boxes.json` | plane and lattice diagnostics, depth sources, rejected SAM masks, box coverage/source, and camera-frame XYZ |
+
+The root also contains `summary.json` and `summary.csv`. Green boxes have SAM and lattice support; yellow boxes were recovered by depth and the lattice.
+
+The saved run covers all 32 `data3` and 37 `data4` recordings, including sparse end states, a single remaining brick, merged masks, and a new-stack reset. The overlays are structurally coherent, but there are no manual ground-truth boxes yet. Measure precision and recall on an annotated validation split before using detections as a robot safety boundary.
+
+Image-space calibration assumes a fixed camera and stack pose within each dataset. Recalibrate after a material camera/viewpoint change. Severe depth holes or a top layer with no usable SAM seed can still prevent reconstruction.
+
+## Preserved earlier RGB-D approaches
+
+Two reproducible RGB-D approaches are retained:
+
+- [`segment_lego_rgbd_baseline.py`](segment_lego_rgbd_baseline.py) freezes the
+  original 70th-percentile, global-highest-within-5-mm heuristic. Its original
+  69 outputs remain in `results_rgbd_top_boxes/`.
+- [`segment_lego_rgbd_improved.py`](segment_lego_rgbd_improved.py) is the
+  geometry-only improved approach. It takes a temporal median of aligned depth
+  frames, extracts each mask's largest connected planar surface, validates its
+  physical 2x4-brick dimensions, clusters surfaces by physical height, and
+  returns every brick in the highest supported cluster. It does not impose a
+  five-brick or image-row limit and does not classify quality.
+- [`segment_lego_rgbd_topplane.py`](segment_lego_rgbd_topplane.py) is the V2
+  top-plane-first model. SAM supplies geometric seeds, while depth selects the
+  supported upper plane. The model learns the active layer's orientation,
+  brick dimensions and lattice, then evaluates every lattice cell by top-plane
+  coverage. It can recover missed instances and split merged SAM detections.
+  Its 69 outputs are stored in `results_rgbd_topplane_v2/`.
+
+```bash
+HF_HOME=/cache/s95vkond/huggingface \
+HF_TOKEN_PATH=/home_domuser2/s95vkond/.cache/huggingface/token \
+python segment_lego_rgbd_topplane.py \
+  /cache/s95vkond/rgbd_data/extracted/extracted \
+  --datasets data3 data4 \
+  --out results_rgbd_topplane_v2
+```
+
+`HF_HOME` keeps the large SAM 3 checkpoint in the cache volume instead of the
+home-directory quota. `HF_TOKEN_PATH` reuses the existing gated-model login
+without copying credentials. Use the same settings for the other SAM 3 scripts.
+
+The original baseline results remain in `results_rgbd_top_boxes/`, and V1 remains
+in `results_rgbd_improved_v1/`. Shared RGB-D utilities are in
+[`segment_lego_rgbd.py`](segment_lego_rgbd.py).
+
+## Legacy RGB-only colour classifier
 
 Instance and colour segmentation of 2x4 LEGO bricks, with a good / bad label per brick: [`segment_lego_sam3_single_prompt.py`](segment_lego_sam3_single_prompt.py). For RGB-D recordings of a stack, see [Top layer from depth](#top-layer-from-depth-with-the-brick-size-prior).
 

@@ -2,7 +2,7 @@
 
 | Folder | Content |
 |---|---|
-| [`sam3_detection/`](sam3_detection/) | SAM 3 instance and colour segmentation of LEGO bricks from a single text prompt, with a good / bad label per brick, and the individual top-layer bricks of a stack from RGB-D with a brick-size prior |
+| [`sam3_detection/`](sam3_detection/) | Current top-plane-first RGB-D baseline, plus preserved SAM 3 RGB and earlier RGB-D approaches |
 
 ## SAM 3 setup
 
@@ -44,13 +44,24 @@ The setup below is the one used to produce the results in `sam3_detection/`. It 
    hf auth login
    ```
 
-   The weights download on the first run.
+   The weights download on the first run. On this workstation, keep them on the
+   larger cache volume by prefixing SAM commands with:
 
-6. Run the detection:
+   ```bash
+   HF_HOME=/cache/s95vkond/huggingface \
+   HF_TOKEN_PATH=/home_domuser2/s95vkond/.cache/huggingface/token
+   ```
+
+6. Run the current RGB-D top-layer baseline:
 
    ```bash
    cd sam3_detection
-   python segment_lego_sam3_single_prompt.py path/to/rgb --out results
+   HF_HOME=/cache/s95vkond/huggingface \
+   HF_TOKEN_PATH=/home_domuser2/s95vkond/.cache/huggingface/token \
+   python segment_lego_rgbd_topplane.py \
+     /cache/s95vkond/rgbd_data/extracted/extracted \
+     --datasets data3 data4 \
+     --out results_rgbd_topplane_v2
    ```
 
 Versions used: Python 3.12.15, torch 2.10.0+cu128, torchvision 0.25.0+cu128, transformers 5.20.1, opencv-python 4.11.0, numpy 1.26.4, SAM 3 at commit `7f473cf`.

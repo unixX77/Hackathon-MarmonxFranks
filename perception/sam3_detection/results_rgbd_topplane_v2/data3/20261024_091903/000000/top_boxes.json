@@ -1,0 +1,276 @@
+{
+  "strategy": "top-plane-first-v2",
+  "dataset": "data3",
+  "recording": "20261024_091903",
+  "frame": 0,
+  "rgb": "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/rgb/000000.png",
+  "depth_sources": [
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000000.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000004.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000009.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000014.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000018.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000022.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000027.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000032.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091903/depth/000036.png"
+  ],
+  "support_plane": {
+    "normal_camera": [
+      -0.02346310019493103,
+      0.06133129820227623,
+      -0.9978417158126831
+    ],
+    "d": 0.4553925,
+    "inliers": 27820,
+    "rmse_m": 0.001222
+  },
+  "top_height_m": 0.084466,
+  "top_plane_pixels": 8166,
+  "lattice": {
+    "brick_long_px": 52.0,
+    "brick_short_px": 28.0,
+    "pitch_px": 52.0,
+    "angle_deg": 87.33,
+    "geometric_seeds": 27,
+    "oriented_seeds": 8,
+    "top_plane_seeds": 6
+  },
+  "boxes": [
+    {
+      "id": 1,
+      "center_xy": [
+        207.3,
+        124.4
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          192.10000610351562,
+          99.0999984741211
+        ],
+        [
+          220.0,
+          97.80000305175781
+        ],
+        [
+          222.39999389648438,
+          149.6999969482422
+        ],
+        [
+          194.5,
+          151.0
+        ]
+      ],
+      "top_coverage": 0.77,
+      "sam_overlap": 0.919,
+      "position_camera_m": [
+        -0.06953000277280807,
+        -0.07128000259399414,
+        0.36899998784065247
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 2,
+      "center_xy": [
+        209.7,
+        176.3
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          194.5,
+          151.0
+        ],
+        [
+          222.39999389648438,
+          149.6999969482422
+        ],
+        [
+          224.89999389648438,
+          201.6999969482422
+        ],
+        [
+          196.89999389648438,
+          203.0
+        ]
+      ],
+      "top_coverage": 0.77,
+      "sam_overlap": 0.907,
+      "position_camera_m": [
+        -0.06852000206708908,
+        -0.041680000722408295,
+        0.3709999918937683
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 3,
+      "center_xy": [
+        212.1,
+        228.3
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          196.89999389648438,
+          203.0
+        ],
+        [
+          224.89999389648438,
+          201.6999969482422
+        ],
+        [
+          227.3000030517578,
+          253.60000610351562
+        ],
+        [
+          199.3000030517578,
+          254.89999389648438
+        ]
+      ],
+      "top_coverage": 0.811,
+      "sam_overlap": 0.915,
+      "position_camera_m": [
+        -0.06690999865531921,
+        -0.010529999621212482,
+        0.3720000088214874
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 4,
+      "center_xy": [
+        214.5,
+        280.2
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          199.3000030517578,
+          254.89999389648438
+        ],
+        [
+          227.3000030517578,
+          253.60000610351562
+        ],
+        [
+          229.6999969482422,
+          305.5
+        ],
+        [
+          201.6999969482422,
+          306.79998779296875
+        ]
+      ],
+      "top_coverage": 0.724,
+      "sam_overlap": 0.919,
+      "position_camera_m": [
+        -0.06641999632120132,
+        0.020899999886751175,
+        0.375
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 5,
+      "center_xy": [
+        268.9,
+        329.7
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          253.6999969482422,
+          304.3999938964844
+        ],
+        [
+          281.70001220703125,
+          303.1000061035156
+        ],
+        [
+          284.1000061035156,
+          355.1000061035156
+        ],
+        [
+          256.1000061035156,
+          356.3999938964844
+        ]
+      ],
+      "top_coverage": 0.633,
+      "sam_overlap": 0.916,
+      "position_camera_m": [
+        -0.03378000110387802,
+        0.05437999963760376,
+        0.37599998712539673
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 6,
+      "center_xy": [
+        216.9,
+        332.2
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 87.33,
+      "corners_xy": [
+        [
+          201.6999969482422,
+          306.79998779296875
+        ],
+        [
+          229.6999969482422,
+          305.5
+        ],
+        [
+          232.10000610351562,
+          357.5
+        ],
+        [
+          204.1999969482422,
+          358.79998779296875
+        ]
+      ],
+      "top_coverage": 0.779,
+      "sam_overlap": 0.906,
+      "position_camera_m": [
+        -0.06476999819278717,
+        0.05316999927163124,
+        0.37599998712539673
+      ],
+      "source": "sam+lattice"
+    }
+  ],
+  "sam_rejected": [
+    {
+      "score": 0.54296875,
+      "reason": "small",
+      "area_px": 298
+    }
+  ]
+}

@@ -1,0 +1,359 @@
+{
+  "strategy": "top-plane-first-v2",
+  "dataset": "data3",
+  "recording": "20261024_091849",
+  "frame": 0,
+  "rgb": "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/rgb/000000.png",
+  "depth_sources": [
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000000.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000005.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000011.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000016.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000022.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000027.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000032.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000038.png",
+    "/cache/s95vkond/rgbd_data/extracted/extracted/data3/20261024_091849/depth/000043.png"
+  ],
+  "support_plane": {
+    "normal_camera": [
+      -0.023455800488591194,
+      0.06158800050616264,
+      -0.9978259801864624
+    ],
+    "d": 0.4554209,
+    "inliers": 27798,
+    "rmse_m": 0.001231
+  },
+  "top_height_m": 0.084529,
+  "top_plane_pixels": 11434,
+  "lattice": {
+    "brick_long_px": 52.0,
+    "brick_short_px": 28.0,
+    "pitch_px": 52.0,
+    "angle_deg": 89.49,
+    "geometric_seeds": 25,
+    "oriented_seeds": 8,
+    "top_plane_seeds": 8
+  },
+  "boxes": [
+    {
+      "id": 1,
+      "center_xy": [
+        214.9,
+        128.6
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          200.60000610351562,
+          102.69999694824219
+        ],
+        [
+          228.60000610351562,
+          102.5
+        ],
+        [
+          229.10000610351562,
+          154.5
+        ],
+        [
+          201.10000610351562,
+          154.6999969482422
+        ]
+      ],
+      "top_coverage": 0.568,
+      "sam_overlap": 0.88,
+      "position_camera_m": [
+        -0.06655000150203705,
+        -0.06830000132322311,
+        0.36899998784065247
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 2,
+      "center_xy": [
+        215.3,
+        180.6
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          201.10000610351562,
+          154.6999969482422
+        ],
+        [
+          229.10000610351562,
+          154.5
+        ],
+        [
+          229.60000610351562,
+          206.5
+        ],
+        [
+          201.60000610351562,
+          206.6999969482422
+        ]
+      ],
+      "top_coverage": 0.67,
+      "sam_overlap": 0.973,
+      "position_camera_m": [
+        -0.06588999927043915,
+        -0.038839999586343765,
+        0.3709999918937683
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 3,
+      "center_xy": [
+        267.8,
+        232.1
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          253.60000610351562,
+          206.3000030517578
+        ],
+        [
+          281.6000061035156,
+          206.0
+        ],
+        [
+          282.0,
+          258.0
+        ],
+        [
+          254.0,
+          258.29998779296875
+        ]
+      ],
+      "top_coverage": 0.593,
+      "sam_overlap": 0.956,
+      "position_camera_m": [
+        -0.034630000591278076,
+        -0.00571999978274107,
+        0.3720000088214874
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 4,
+      "center_xy": [
+        215.8,
+        232.6
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          201.60000610351562,
+          206.6999969482422
+        ],
+        [
+          229.60000610351562,
+          206.5
+        ],
+        [
+          230.0,
+          258.5
+        ],
+        [
+          202.0,
+          258.70001220703125
+        ]
+      ],
+      "top_coverage": 0.842,
+      "sam_overlap": 0.941,
+      "position_camera_m": [
+        -0.06425999850034714,
+        -0.007540000136941671,
+        0.37299999594688416
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 5,
+      "center_xy": [
+        268.3,
+        284.1
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          254.0,
+          258.29998779296875
+        ],
+        [
+          282.0,
+          258.0
+        ],
+        [
+          282.5,
+          310.0
+        ],
+        [
+          254.5,
+          310.29998779296875
+        ]
+      ],
+      "top_coverage": 0.834,
+      "sam_overlap": 0.921,
+      "position_camera_m": [
+        -0.032910000532865524,
+        0.02271999977529049,
+        0.37400001287460327
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 6,
+      "center_xy": [
+        216.3,
+        284.6
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          202.0,
+          258.70001220703125
+        ],
+        [
+          230.0,
+          258.5
+        ],
+        [
+          230.5,
+          310.5
+        ],
+        [
+          202.5,
+          310.70001220703125
+        ]
+      ],
+      "top_coverage": 0.781,
+      "sam_overlap": 0.899,
+      "position_camera_m": [
+        -0.06503000110387802,
+        0.023930000141263008,
+        0.375
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 7,
+      "center_xy": [
+        268.7,
+        336.1
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          254.5,
+          310.29998779296875
+        ],
+        [
+          282.5,
+          310.0
+        ],
+        [
+          283.0,
+          362.0
+        ],
+        [
+          255.0,
+          362.29998779296875
+        ]
+      ],
+      "top_coverage": 0.885,
+      "sam_overlap": 0.926,
+      "position_camera_m": [
+        -0.03248000144958496,
+        0.05649999901652336,
+        0.37599998712539673
+      ],
+      "source": "sam+lattice"
+    },
+    {
+      "id": 8,
+      "center_xy": [
+        216.7,
+        336.6
+      ],
+      "size_wh": [
+        52.0,
+        28.0
+      ],
+      "angle_deg": 89.49,
+      "corners_xy": [
+        [
+          202.5,
+          310.70001220703125
+        ],
+        [
+          230.5,
+          310.5
+        ],
+        [
+          231.0,
+          362.5
+        ],
+        [
+          203.0,
+          362.70001220703125
+        ]
+      ],
+      "top_coverage": 0.915,
+      "sam_overlap": 0.825,
+      "position_camera_m": [
+        -0.06373000144958496,
+        0.05559999868273735,
+        0.37599998712539673
+      ],
+      "source": "sam+lattice"
+    }
+  ],
+  "sam_rejected": [
+    {
+      "score": 0.796875,
+      "reason": "not rectangular",
+      "rectangularity": 0.7,
+      "area_px": 942
+    },
+    {
+      "score": 0.53125,
+      "reason": "not rectangular",
+      "rectangularity": 0.6,
+      "area_px": 1528
+    }
+  ]
+}
