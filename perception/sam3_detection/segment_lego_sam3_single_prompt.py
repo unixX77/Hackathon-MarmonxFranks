@@ -250,12 +250,18 @@ def write_summary(out, summary):
 
 # ---------------------------------------------------------------- main
 
-def segment(rgb, model, processor, args, device, dtype):
+def segment(rgb, model, processor, args, device, dtype, mask_filter=None):
     h, w = rgb.shape[:2]
     lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB).astype(np.float32)
     masks, scores = run_sam3(model, processor, Image.fromarray(rgb), args.prompt,
                              args.threshold, args.mask_threshold, device, dtype)
     rejected = []
+
+    # Geometry must reject assembly masks before they can suppress contained bricks.
+    if mask_filter is not None and len(scores):
+        accepted, geometry_rejected = mask_filter(masks, scores)
+        masks, scores = masks[accepted], scores[accepted]
+        rejected.extend(geometry_rejected)
 
     # 1. overlap + absolute size + rectangularity
     cand = []

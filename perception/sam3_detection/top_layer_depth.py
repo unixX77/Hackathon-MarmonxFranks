@@ -75,21 +75,36 @@ def filter_top(instance, depth, calibration, args):
             record['reason'] = 'insufficient valid interior depth'
         else:
             values = heights[samples]
-            record['height_m'] = float(np.percentile(values, 80))
+            record['height_m'] = float(np.median(values))
             record['height_spread_m'] = float(np.percentile(values, 90) - np.percentile(values, 10))
             record['approx_layer'] = int(np.rint(record['height_m'] / (args.block_height_mm / 1000)))
         records.append(record)
-    candidates = [r for r in records if r.get('height_m', 0) >= args.block_height_mm / 2000]
-    highest = max((r['height_m'] for r in candidates), default=None)
     tolerance = args.block_height_mm / 2000
+    candidates = []
     for r in records:
-        r['kept'] = highest is not None and r in candidates and highest - r['height_m'] <= tolerance
+        if r.get('height_spread_m', 0) > args.block_height_mm / 1000:
+            r['reason'] = 'interior depth spans more than one brick height'
+        elif r.get('height_m', 0) >= tolerance:
+            candidates.append(r)
+    # Find the highest narrow group supported by multiple instances. A lone
+    # noisy maximum must not move the cutoff above a well-supported layer.
+    minimum = min(getattr(args, 'top_min_support', 2), len(candidates))
+    groups = [[r for r in candidates if low['height_m'] <= r['height_m'] <= low['height_m'] + tolerance]
+              for low in candidates]
+    supported = [g for g in groups if len(g) >= minimum]
+    group = max(supported, key=lambda g: np.median([r['height_m'] for r in g]), default=[])
+    highest = float(np.median([r['height_m'] for r in group])) if group else None
+    for r in records:
+        r['kept'] = highest is not None and r in candidates and abs(highest - r['height_m']) <= tolerance
+        if not r['kept'] and 'reason' not in r:
+            r['reason'] = 'outside supported top layer'
     kept = np.isin(instance, [r['id'] for r in records if r['kept']])
     report = {'block_height_mm': args.block_height_mm, 'top_layer_tolerance_m': tolerance,
               'top_height_m': highest, 'table_normal': normal.tolist(), 'table_offset_m': offset,
               'table_median_residual_m': residual, 'table_inlier_fraction': ratio,
-              'instances': records,
-              'method': '80th percentile of eroded-mask heights; global highest layer, half-block tolerance',
+              'instances': records, 'top_cluster_support': len(group),
+              'top_min_support': getattr(args, 'top_min_support', 2),
+              'method': 'median interior height; highest supported cluster, half-block tolerance',
               'limitations': 'Experimental: assumes dominant background is table; studs/occlusions/noise can bias height.'}
     return kept, report
 
@@ -117,6 +132,8 @@ def main():
     p.add_argument('--out', type=Path, default=Path('data/top_layer'))
     p.add_argument('--instance-mask', type=Path, help='Optional existing integer instance PNG; skip SAM3')
     p.add_argument('--no-show', action='store_true')
+    p.add_argument('--top-min-support', type=int, default=2, choices=range(1, 100),
+                   help='minimum masks supporting the top layer; use 1 for a single top brick')
     p.add_argument('--block-height-mm', type=float, default=10)
     p.add_argument('--table-roi', nargs=4, type=int, metavar=('X', 'Y', 'W', 'H'))
     p.add_argument('--plane-threshold-mm', type=float, default=3)
