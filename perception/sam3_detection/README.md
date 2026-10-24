@@ -322,3 +322,57 @@ Known issues:
 
 - Where SAM 3 returns a top-layer brick only as thin slivers, the size prior rejects it, so that brick is missing (top of the left column in `20261024_095657`).
 - The colour palette was calibrated on the webcam images, so the colour names are not reliable on the RealSense yet. The masks and the top-layer selection do not depend on them.
+
+## Live D435 with settings from a Viewer SDK recording
+
+The live script uses the same analysis functions and six-panel visualization as
+`top_layer_bricks.py`. SAM3 loads once, and detection runs in a worker while the
+live camera continues updating. The positional argument is an **extracted
+reference recording** with `camera_info.json` and `recording_settings.json`:
+
+```bash
+conda activate sam3
+python perception/sam3_detection/live_top_layer_bricks.py \
+  data_collection/data/extracted/data4/20261024_095657 \
+  --brick-size-mm 30 15 10
+```
+
+Connect the camera with USB 3 and close RealSense Viewer/other camera programs.
+The `sam3` environment needs `pyrealsense2` (installed locally as 2.59.1.11053).
+By default the recorded serial number is required; use `--serial SERIAL` for
+another camera (its own calibration is read live).
+
+Controls:
+
+- **Enter:** capture a new snapshot and detect its bricks; input is ignored while busy.
+- **s:** save the completed snapshot, masks, six-panel preview, `bricks.json`,
+  `poses.csv`, RGB, aligned/native uint16 depth, calibration and metadata.
+- **q / Escape:** quit. An in-progress GPU inference finishes during shutdown.
+
+Results save under `data/live_top_layer_bricks/session_<timestamp>/<capture>/`.
+`rgb/000000.png`, `depth/000000.png` and `camera_info.json` can be passed back to
+the offline script. Poses are in the camera frame and refer to the captured
+snapshot, not the continually updating live view. Keep the scene stationary
+while capturing and do not use old poses after moving the camera/bricks.
+
+Recorded stream dimensions, formats and FPS are restored. Writable imaging
+options (preset, emitter/laser power, depth scale, automatic controls and color
+controls) are restored from the first recorded settings. Dynamic exposure/gain
+and white-balance values are not forced when their auto controls were enabled.
+Read-only telemetry, sync outputs and HDR sequence registers are not restored.
+The session's `settings_report.json` lists applied/skipped/failed controls.
+Failures or unsupported imaging options stop startup by default; review them
+before choosing `--allow-setting-differences`. Exact auto-exposure results also
+depend on current lighting, and firmware differences can affect settings.
+
+Recordings list post-processing block names without complete enabled states and
+parameters. No Viewer software filters are applied: this matches our offline
+extraction (original depth plus alignment). Advanced custom preset registers
+cannot be fully recovered from those option topics. If you used them, export
+camera settings JSON from Viewer and pass `--advanced-json settings.json`;
+its preset is retained while the other recorded imaging controls are applied.
+
+The default `--burst 1` reproduces single-frame offline input. Optional
+`--burst 10` takes a valid-pixel median of aligned and native depth over ten
+frames, with the middle color frame; use only with a stationary camera/scene.
+Zero remains missing depth, and the source depth scale converts pixels to metres.

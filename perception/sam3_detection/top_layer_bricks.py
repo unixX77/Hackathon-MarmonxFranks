@@ -313,64 +313,14 @@ def titled(img, text):
     return out
 
 
-def main():
-    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    p.add_argument('recording', type=Path, help='Extracted recording folder containing rgb/, depth/, camera_info.json')
-    p.add_argument('--frame', default='000000')
-    p.add_argument('--out', type=Path, default=Path('data/top_layer_bricks'))
-    p.add_argument('--no-show', action='store_true')
-    p.add_argument('--brick-size-mm', nargs=3, type=float, default=[30, 15, 10], metavar=('L', 'W', 'H'),
-                   help='brick length, width, height (H is also the layer height)')
-    p.add_argument('--top-min-support', type=int, default=2, choices=range(1, 100),
-                   help='minimum masks supporting the top layer; use 1 for a single top brick')
-    p.add_argument('--size-tol', type=float, default=0.3, help='relative tolerance on length and width')
-    p.add_argument('--table-roi', nargs=4, type=int, metavar=('X', 'Y', 'W', 'H'))
-    p.add_argument('--plane-threshold-mm', type=float, default=3)
-    p.add_argument('--erode', type=int, default=2, help='3x3 erosion iterations')
-    p.add_argument('--min-depth-pixels', type=int, default=30)
-    p.add_argument('--min-valid-fraction', type=float, default=0.3)
-    p.add_argument('--model', default='facebook/sam3')
-    p.add_argument('--prompt', default='lego brick')
-    p.add_argument('--threshold', type=float, default=0.5)
-    p.add_argument('--mask-threshold', type=float, default=0.5)
-    p.add_argument('--max-overlap', type=float, default=0.5)
-    p.add_argument('--min-area', type=int, default=100)
-    p.add_argument('--min-rect', type=float, default=0.0)
-    p.add_argument('--min-rel-area', type=float, default=0.0)
-    p.add_argument('--max-colour-dist', type=float, default=float('inf'))
-    p.add_argument('--max-wb-gain', type=float, default=1.25, help='limit on the white-balance gain per channel')
-    p.add_argument('--colour-erosion', type=float, default=0.12,
-                   help='fraction of the short brick side ignored at the edges when measuring colour')
-    p.add_argument('--max-colour-dist-conf', type=float, default=35.0,
-                   help='colour distance above which the colour is low-confidence')
-    p.add_argument('--min-colour-margin', type=float, default=4.0,
-                   help='distance margin to the second-best colour below which the colour is low-confidence')
-    args = p.parse_args()
-    args.block_height_mm = args.brick_size_mm[2]  # used by filter_top
-
-    bgr = cv2.imread(str(args.recording / 'rgb' / f'{args.frame}.png'))
-    depth = cv2.imread(str(args.recording / 'depth' / f'{args.frame}.png'), cv2.IMREAD_UNCHANGED)
-    if bgr is None or depth is None:
-        p.error('Missing RGB or aligned depth frame')
-    if depth.dtype != np.uint16 or depth.shape != bgr.shape[:2]:
-        p.error('Expected aligned uint16 depth matching RGB dimensions')
-    calibration = json.loads((args.recording / 'camera_info.json').read_text())
-
-    try:
-        import torch
-        from transformers import Sam3Model, Sam3Processor
-        from segment_lego_sam3_single_prompt import segment
-    except ImportError as e:
-        p.error(f'{e}. Run in your sam3 environment.')
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    dtype = torch.bfloat16 if device == 'cuda' and torch.cuda.is_bf16_supported() else torch.float32
-    processor = Sam3Processor.from_pretrained(args.model)
-    model = Sam3Model.from_pretrained(args.model, torch_dtype=dtype).to(device).eval()
+def process_frame(bgr, depth, calibration, model, processor, args, device, dtype):
+    """Shared offline/live analysis; returns images, metadata and final poses."""
+    from segment_lego_sam3_single_prompt import segment
     semantic, instance, sam_records, rejected, _ = segment(
         cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB), model, processor, args, device, dtype,
         mask_filter=geometry_mask_filter(depth, calibration, args))
     if not np.any(instance):
-        p.error('No foreground instances found; adjust SAM3 prompt/threshold')
+        raise ValueError('No foreground instances found; adjust SAM3 prompt/threshold')
 
     keep, report = filter_top(instance, depth, calibration, args)
     kept = [r for r in report['instances'] if r['kept']]
@@ -405,23 +355,91 @@ def main():
     ]
     preview = np.vstack([np.hstack(stages[:3]), np.hstack(stages[3:])])
 
-    output = args.out / args.recording.name / args.frame
-    output.mkdir(parents=True, exist_ok=True)
-    for name, image in {'final_instances.png': bricks_img, 'final_semantic.png': final_semantic,
-                        'overlay.png': overlay, 'preview.png': preview}.items():
-        if not cv2.imwrite(str(output / name), image):
-            raise RuntimeError(f'Cannot write {output / name}')
-    (output / 'bricks.json').write_text(json.dumps({
+    images = {'final_instances.png': bricks_img, 'final_semantic.png': final_semantic,
+              'overlay.png': overlay, 'preview.png': preview}
+    metadata = {
         'recording': str(args.recording), 'frame': args.frame, 'brick_size_mm': args.brick_size_mm,
         'size_tol': args.size_tol, 'top_height_m': report['top_height_m'],
         'table_normal': report['table_normal'], 'table_offset_m': report['table_offset_m'],
         'colour': colour_info, 'status_counts': counts, 'sam_rejected': rejected, 'depth_report': report,
         'good': n_good, 'bad': len(final) - n_good,
         'low_confidence_colour': sum(b['colour_confidence'] == 'low' for b in final),
-        'bricks': bricks}, indent=2))
+        'bricks': bricks}
+    return images, metadata, final
+
+
+def save_result(output, images, metadata, final):
+    output.mkdir(parents=True, exist_ok=True)
+    for name, image in images.items():
+        if not cv2.imwrite(str(output / name), image):
+            raise RuntimeError(f'Cannot write {output / name}')
+    (output / 'bricks.json').write_text(json.dumps(metadata, indent=2))
     write_poses_csv(output / 'poses.csv', final)
-    print(f'{len(kept)} top-layer masks -> {len(final)} bricks {counts}, {n_good} good / '
-          f'{len(final) - n_good} bad, colour offset {colour_info["lab_offset"]} -> {output}')
+
+
+def build_parser():
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument('recording', type=Path, help='Extracted recording folder containing rgb/, depth/, camera_info.json')
+    p.add_argument('--frame', default='000000')
+    p.add_argument('--out', type=Path, default=Path('data/top_layer_bricks'))
+    p.add_argument('--no-show', action='store_true')
+    p.add_argument('--brick-size-mm', nargs=3, type=float, default=[30, 15, 10], metavar=('L', 'W', 'H'),
+                   help='brick length, width, height (H is also the layer height)')
+    p.add_argument('--top-min-support', type=int, default=2, choices=range(1, 100),
+                   help='minimum masks supporting the top layer; use 1 for a single top brick')
+    p.add_argument('--size-tol', type=float, default=0.3, help='relative tolerance on length and width')
+    p.add_argument('--table-roi', nargs=4, type=int, metavar=('X', 'Y', 'W', 'H'))
+    p.add_argument('--plane-threshold-mm', type=float, default=3)
+    p.add_argument('--erode', type=int, default=2, help='3x3 erosion iterations')
+    p.add_argument('--min-depth-pixels', type=int, default=30)
+    p.add_argument('--min-valid-fraction', type=float, default=0.3)
+    p.add_argument('--model', default='facebook/sam3')
+    p.add_argument('--prompt', default='lego brick')
+    p.add_argument('--threshold', type=float, default=0.5)
+    p.add_argument('--mask-threshold', type=float, default=0.5)
+    p.add_argument('--max-overlap', type=float, default=0.5)
+    p.add_argument('--min-area', type=int, default=100)
+    p.add_argument('--min-rect', type=float, default=0.0)
+    p.add_argument('--min-rel-area', type=float, default=0.0)
+    p.add_argument('--max-colour-dist', type=float, default=float('inf'))
+    p.add_argument('--max-wb-gain', type=float, default=1.25, help='limit on the white-balance gain per channel')
+    p.add_argument('--colour-erosion', type=float, default=0.12,
+                   help='fraction of the short brick side ignored at the edges when measuring colour')
+    p.add_argument('--max-colour-dist-conf', type=float, default=35.0,
+                   help='colour distance above which the colour is low-confidence')
+    p.add_argument('--min-colour-margin', type=float, default=4.0,
+                   help='distance margin to the second-best colour below which the colour is low-confidence')
+    return p
+
+
+def main():
+    p = build_parser()
+    args = p.parse_args()
+    args.block_height_mm = args.brick_size_mm[2]  # used by filter_top
+
+    bgr = cv2.imread(str(args.recording / 'rgb' / f'{args.frame}.png'))
+    depth = cv2.imread(str(args.recording / 'depth' / f'{args.frame}.png'), cv2.IMREAD_UNCHANGED)
+    if bgr is None or depth is None:
+        p.error('Missing RGB or aligned depth frame')
+    if depth.dtype != np.uint16 or depth.shape != bgr.shape[:2]:
+        p.error('Expected aligned uint16 depth matching RGB dimensions')
+    calibration = json.loads((args.recording / 'camera_info.json').read_text())
+
+    try:
+        import torch
+        from transformers import Sam3Model, Sam3Processor
+        from segment_lego_sam3_single_prompt import segment
+    except ImportError as e:
+        p.error(f'{e}. Run in your sam3 environment.')
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    dtype = torch.bfloat16 if device == 'cuda' and torch.cuda.is_bf16_supported() else torch.float32
+    processor = Sam3Processor.from_pretrained(args.model)
+    model = Sam3Model.from_pretrained(args.model, torch_dtype=dtype).to(device).eval()
+    images, metadata, final = process_frame(bgr, depth, calibration, model, processor, args, device, dtype)
+    output = args.out / args.recording.name / args.frame
+    save_result(output, images, metadata, final)
+    preview = images['preview.png']
+    print(f'{len(final)} bricks -> {output}')
 
     if not args.no_show and not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
         print(f'No display; open {output / "preview.png"} instead (use --no-show to skip this check)')
