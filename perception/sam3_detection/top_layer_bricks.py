@@ -26,7 +26,7 @@ Outputs in <out>/<recording>/<frame>/:
   final_instances.png  uint16 brick ids after splitting (0 = background)
   final_semantic.png   uint8 colour class per pixel (see segment_lego_sam3_single_prompt.py)
   overlay.png          final bricks: colour class fill, green outline = good, red = bad,
-                       yellow dot = low-confidence colour
+                       yellow dot = fitted brick centre
   preview.png          all stages: input | height above table | all SAM3 bricks /
                        depth top layer | size prior with footprints | colour and good / bad
   bricks.json          per brick: id, status, colour, quality, colour confidence, measured size, fitted pose,
@@ -293,17 +293,16 @@ def height_view(height, top_height):
 
 
 def final_view(bgr, bricks_img, bricks):
-    """Colour-class patches, green outline = good, red = bad, yellow dot = low-confidence colour."""
+    """Colour-class patches, green outline = good, red = bad, yellow dot = fitted brick centre."""
     shown = [b for b in bricks if b['id'] and 'class_id' in b]
     out = semantic_overlay(bgr, bricks_img, shown, {b['id'] for b in shown})
     for b in shown:
         contours, _ = cv2.findContours((bricks_img == b['id']).astype(np.uint8), cv2.RETR_EXTERNAL,
                                        cv2.CHAIN_APPROX_NONE)
         cv2.drawContours(out, contours, -1, (60, 210, 60) if b['quality'] == 'good' else (40, 40, 240), 2)
-        if b['colour_confidence'] == 'low':
-            cx, cy = np.mean(b['footprint_px'], axis=0)
-            cv2.circle(out, (int(cx), int(cy)), 4, (0, 0, 0), -1, cv2.LINE_AA)
-            cv2.circle(out, (int(cx), int(cy)), 3, (0, 230, 255), -1, cv2.LINE_AA)
+        cx, cy = np.mean(b['footprint_px'], axis=0)
+        cv2.circle(out, (int(cx), int(cy)), 4, (0, 0, 0), -1, cv2.LINE_AA)
+        cv2.circle(out, (int(cx), int(cy)), 3, (0, 230, 255), -1, cv2.LINE_AA)
     return out
 
 
