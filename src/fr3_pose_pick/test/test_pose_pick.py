@@ -83,9 +83,9 @@ def test_correction_commands_and_limits():
     step, yaw_step = CONFIG['max_nudge_step'], CONFIG['max_nudge_yaw_step_deg']
     assert pp.parse_nudge('ok', step, yaw_step) == ('ok',)
     assert pp.parse_nudge('Q', step, yaw_step) == ('quit',)
-    assert pp.parse_nudge('x 0.002', step, yaw_step) == ('nudge', 0.002, 0.0, 0.0)
-    assert pp.parse_nudge('y -0.001, yaw 5', step, yaw_step) == ('nudge', 0.0, -0.001, 5.0)
-    for bad in ('', 'x', 'z 0.001', 'x abc', 'x 0.05', 'yaw 40', 'y 0.011'):
+    assert pp.parse_nudge('x 0.002', step, yaw_step) == ('nudge', 0.002, 0.0, 0.0, 0.0)
+    assert pp.parse_nudge('y -0.001, yaw 5', step, yaw_step) == ('nudge', 0.0, -0.001, 5.0, 0.0)
+    for bad in ('', 'x', 'w 0.001', 'z 0.02', 'x abc', 'x 0.05', 'yaw 40', 'y 0.011'):
         with pytest.raises(ValueError):
             pp.parse_nudge(bad, step, yaw_step)
 

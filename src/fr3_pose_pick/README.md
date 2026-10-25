@@ -79,8 +79,7 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   Leave it out to use the arm's pose right now, which is only right if the arm has not moved since.
 - `--camera-quat` / `--place-camera-quat` give the brick orientation in the camera frame; only the
   direction of its long side on the table is used (`--camera-long-axis x|y`). Or use `--yaw` / `--place-yaw`.
-- The converted top face must be where a brick on the table has it (within 8 mm) or it refuses;
-  `--use-measured-z` trusts the measured height instead (for a brick on something).
+- The height of the brick is worked out automatically (see the next section): you do not give a layer count.
 - The hand-eye result missed its strict gate (typical error about 3 mm / 0.9 deg), so expect a few mm
   of error from the conversion alone: use the inspection stop to correct it.
 
@@ -118,34 +117,43 @@ Measure it, do not guess it:
 Runs where you pressed `ok` without looking count as "no correction needed": use `--last` to take only the
 runs where you really checked. The arrival line shows the signed error (`dx`, `dy`) of the arm itself.
 
-## Bricks lying on other bricks (stacks)
+## Brick height from a camera point: automatic (on the table, on other bricks, or anywhere)
 
-The brick height in the config (`block_size[2]`, 9.6 mm) is one layer. Layer 1 is on the table, layer 2 is on
-top of one brick, and so on. Say which layer the brick is in:
+Give only the camera xyz. The robot works out the height itself, so a brick lying on the table, on one or
+several other bricks, or on anything else is picked the same way:
+1. The measured top face is corrected by `camera_height_bias` (3.7 mm). In your real runs the converted top
+   face of a brick lying on the table came out 0.7 to 7.1 mm too high, 3.7 mm on average over 8 runs: the
+   studs (about 1.7 mm) and a small depth bias. Re-measure it if the camera setup changes.
+2. If the corrected height is within `layer_snap_tolerance` (3 mm) of a whole brick layer (the brick height in
+   the config is one layer; layer 1 is on the table), the **exact layer height** is used, so the camera noise does
+   not move the fingers.
+3. Otherwise the corrected measurement is used as it is, and the script says so: look carefully at the fingers
+   at the inspection stop.
+4. Refused as impossible: a top face below a brick on the table, or higher than `max_brick_top_above_table`
+   (12 cm). That almost always means the arm was not in the pose the picture was taken from.
 
 ```bash
-# pick the brick in layer 2 of a stack, put it down 7 cm to the left as layer 3 (on top of two bricks)
 ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
-     --camera-xyz X Y Z --layers 2 --place-offset 0 0.07 --place-layers 3
+     --camera-xyz X Y Z --yaw 0 --place-offset 0 0.07
 ```
-- `--layers N` (pick) and `--place-layers N` (put down) work with `--camera-xyz` / `--place-camera-xyz`, with
-  typed `--pose` / `--place X Y`, and with `--place-offset`. With a typed pose they replace the Z.
-- With a camera point, the measured height is only a **cross-check**: it must be within
-  `table_check_tolerance` (8 mm) of that layer's top face or the script refuses. The grasp then uses the exact
-  layer height, so the 3 to 7 mm of camera height error does not move the fingers.
-- Without `--layers` the brick is assumed to be on the table, as before. If the check fails, the message says how
-  many layers the measured height corresponds to, so you can try `--layers N`.
-- `--layers auto` works the layer out from the camera height, and refuses when the height is not within
-  `layer_auto_tolerance` (3 mm) of one layer. A layer is 9.6 mm and the camera height is often 3 to 7 mm off, so
-  `auto` often refuses: then say the count yourself.
-- **Limit:** an 8 mm check cannot always tell a wrong layer count from camera error (layers are 9.6 mm apart).
-  The inspection stop is the real check: look at the fingers' height against the stack before you type `ok`.
-- The camera needs at least about 28 cm to the brick to measure depth reliably (a RealSense D435). With a tall
-  stack, keep the hand correspondingly higher when the picture is taken. A rule of thumb for a brick on the table:
-  the depth in the camera numbers is about hand height + 0.055 m, minus the height of the stack.
+Overrides, only if you want them: `--layers N` states the layer (1 = on the table); the corrected height must
+then agree within `table_check_tolerance` or it refuses. `--place-layers N` puts the brick down as layer N (with
+`--place`, `--place-offset` or `--place-camera-xyz`; a camera place point is automatic like the pick).
+`--use-measured-z` always uses the corrected measurement and never snaps.
+
+**Fixing a height that is a little off, by eye:** at the inspection stop type `z 0.002` (up 2 mm, at most 5 mm
+at a time and 15 mm in total) as well as `x`, `y` and `yaw`. The total correction is logged with every run.
+
+Limits you should know:
+- A layer is 9.6 mm and the camera height is good to a few mm, so a wrong layer can in principle be mistaken for
+  a right one. The inspection stop is the real check: look at the fingers' height against the brick.
+- The camera needs at least about 28 cm to the brick to measure depth reliably (a RealSense D435). A rule of
+  thumb for a brick on the table: the depth in the camera numbers is about hand height + 0.055 m, minus the
+  height of what it lies on. If the numbers do not fit this, retake the picture from higher up.
+- The bricks of a stack, and the neighbours, are not in the planning scene. The hand comes straight down beside
+  the brick, so keep other bricks out of the finger travel on each side.
 - Fingertips reach about 9 mm below the hand point, so they grip the upper part of the brick and stay clear of
-  the brick below. The released brick is removed from the planning scene, and the bricks of a stack are not in it:
-  the hand comes straight down beside the brick, so keep other bricks out of the 17 mm of finger travel.
+  the brick below.
 
 ## Safety: one robot stack per ROS domain
 

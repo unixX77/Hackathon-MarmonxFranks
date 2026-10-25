@@ -1,4 +1,4 @@
-"""Bricks lying on other bricks: --layers N|auto and --place-layers."""
+"""Automatic brick height for camera points: on the table, on other bricks, or anywhere else."""
 import argparse
 import importlib.util
 import sys
@@ -25,22 +25,21 @@ pp = load('pose_pick')
 CONFIG = yaml.safe_load(open(ROOT / 'config' / 'pose_pick.yaml', encoding='utf-8'))
 H = CONFIG['block_size'][2]                    # one layer
 TABLE = CONFIG['table_top_z']
+BIAS = CONFIG['camera_height_bias']            # the camera sees a top face this much too high
 HAND = cf.pose_matrix([0.40, 0.05, 0.30],
                       (Rotation.from_euler('z', 25, degrees=True) * Rotation.from_euler('x', 180, degrees=True)).as_quat())
 HAND_CAM = cf.pose_matrix([0.05, -0.04, -0.045], Rotation.from_euler('z', 90, degrees=True).as_quat())
 
 
-def camera_point_of(base_point):
-    return (np.linalg.inv(HAND @ HAND_CAM) @ np.append(base_point, 1.0))[:3]
+def seen(true_top_z, error=0.0, x=0.46, y=0.12):
+    """The camera-frame point for a top face at true_top_z, as the real camera reports it (BIAS too high, plus error)."""
+    base = np.array([x, y, true_top_z + BIAS + error])
+    return (np.linalg.inv(HAND @ HAND_CAM) @ np.append(base, 1.0))[:3]
 
 
-def seen_at(top_z, x=0.46, y=0.12):
-    """The camera-frame point a top face at base height top_z would have."""
-    return camera_point_of(np.array([x, y, top_z]))
-
-
-def resolve(top_z, layers, **kw):
-    return pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, seen_at(top_z), None, 'x', False, 'Pick', layers, **kw)
+def resolve(true_top_z, layers=None, error=0.0, use_measured_z=False, info=None):
+    return pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, seen(true_top_z, error), None, 'x', use_measured_z, 'Pick',
+                                    layers, info)
 
 
 def test_layer_heights():
@@ -73,43 +72,67 @@ def test_grasp_height_follows_the_layer():
     assert three['above'][2] - one['above'][2] == pytest.approx(2 * H)
 
 
-def test_the_15_mm_case_is_refused_as_a_single_brick_and_names_the_layers():
-    top = TABLE + H + 0.0154                                                       # what the camera gave: +15.4 mm
-    with pytest.raises(ValueError, match='where a brick on the table should be') as problem:
-        resolve(top, None)
-    assert '2.6' in str(problem.value) and '--layers 3' in str(problem.value)      # 2.6 layers: it says which count to try
+def test_the_camera_bias_is_the_one_measured_on_the_real_runs():
+    assert 0.003 <= BIAS <= 0.0045                    # table checks of the real runs: mean +3.7 mm
 
 
-def test_a_stacked_brick_uses_the_exact_layer_height_not_the_noisy_measurement():
-    for layers in (2, 3, 4):
-        measured = pp.layer_top_z(CONFIG, layers) + 0.004                          # camera 4 mm too high, as seen before
-        x, y, centre_z, yaw = resolve(measured, layers)
-        assert (x, y) == pytest.approx((0.46, 0.12), abs=1e-9)
-        assert centre_z == pytest.approx(pp.layer_centre_z(CONFIG, layers))        # snapped, the 4 mm is gone
-        assert yaw is None
+@pytest.mark.parametrize('layers', [1, 2, 3, 4, 5])
+@pytest.mark.parametrize('error', [-0.002, 0.0, 0.002])
+def test_every_layer_is_found_automatically_and_the_bias_and_noise_are_removed(layers, error):
+    info = {}
+    x, y, centre_z, yaw = resolve(pp.layer_top_z(CONFIG, layers), error=error, info=info)
+    assert (x, y) == pytest.approx((0.46, 0.12), abs=1e-9)
+    if layers == 1:
+        assert centre_z is None                                                    # a brick on the table: the old path
+    else:
+        assert centre_z == pytest.approx(pp.layer_centre_z(CONFIG, layers))        # exact layer height, noise gone
+    assert info['layer_used'] == layers
+    assert info['top_z_measured_m'] == pytest.approx(pp.layer_top_z(CONFIG, layers) + BIAS + error)
 
 
-def test_layer_one_is_the_table_path():
-    assert resolve(TABLE + H + 0.003, 1)[2] is None                                # same as the default: table height
+def test_a_height_that_is_not_a_layer_is_used_as_measured():
+    """A brick on something that is not a whole brick high: no refusal, the corrected measurement is used."""
+    true_top = TABLE + H + 0.015                                                   # 15 mm above a brick on the table
+    info = {}
+    x, y, centre_z, _ = resolve(true_top, info=info)
+    assert centre_z == pytest.approx(true_top - H / 2)
+    assert info['layer_used'] is None and info['layers_above_table'] == pytest.approx((H + 0.015) / H)
 
 
-def test_wrong_layer_count_is_refused():
+def test_the_case_that_was_refused_on_the_real_robot_now_works():
+    """The real log: camera top face at z=+0.005, a 'table check +15.4 mm'. After the 3.7 mm camera calibration that is
+    2.22 layers, within 3 mm of layer 2, so the brick is picked as a layer-2 brick (it used to be refused)."""
+    measured_top = 0.0050
+    point = (np.linalg.inv(HAND @ HAND_CAM) @ np.append(np.array([0.378, 0.0117, measured_top]), 1.0))[:3]
+    info = {}
+    _, _, centre_z, _ = pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, point, None, 'x', False, 'Pick', None, info)
+    assert info['layer_used'] == 2 and centre_z == pytest.approx(pp.layer_centre_z(CONFIG, 2))
+    assert info['layers_above_table'] == pytest.approx((measured_top - BIAS - TABLE) / H)
+
+
+def test_use_measured_z_never_snaps():
+    true_top = pp.layer_top_z(CONFIG, 2) + 0.002                                   # 2 mm above layer 2
+    assert resolve(true_top)[2] == pytest.approx(pp.layer_centre_z(CONFIG, 2))                   # snapped
+    assert resolve(true_top, use_measured_z=True)[2] == pytest.approx(true_top - H / 2)         # as measured
+
+
+def test_impossible_heights_are_refused():
+    with pytest.raises(ValueError, match='BELOW a brick on the table'):
+        resolve(TABLE - 0.010)
+    with pytest.raises(ValueError, match='BELOW a brick on the table'):
+        resolve(0.0, error=-0.03)                                                  # the capture pose was surely wrong
+    with pytest.raises(ValueError, match='max_brick_top_above_table'):
+        resolve(TABLE + 0.15)
+
+
+def test_a_stated_layer_is_checked_strictly():
     measured = pp.layer_top_z(CONFIG, 3)
+    assert resolve(measured, 3)[2] == pytest.approx(pp.layer_centre_z(CONFIG, 3))
     with pytest.raises(ValueError, match='where layer 2 should be'):
         resolve(measured, 2)                                                       # 9.6 mm off
     with pytest.raises(ValueError, match='where layer 5 should be'):
         resolve(measured, 5)
-
-
-def test_auto_layers_picks_the_clear_cases_and_refuses_the_ambiguous_ones():
-    assert resolve(pp.layer_top_z(CONFIG, 3) + 0.002, 'auto')[2] == pytest.approx(pp.layer_centre_z(CONFIG, 3))
-    assert resolve(pp.layer_top_z(CONFIG, 1) - 0.002, 'auto')[2] is None
-    between = TABLE + 2.5 * H                                                      # halfway between layers 2 and 3
-    with pytest.raises(ValueError, match='too close to call') as problem:
-        resolve(between, 'auto')
-    assert '--layers' in str(problem.value) and '2.50' in str(problem.value)
-    with pytest.raises(ValueError, match='too close to call'):
-        resolve(pp.layer_top_z(CONFIG, 2) + 0.004, 'auto')                         # 4 mm off one layer: over the 3 mm limit
+    assert resolve(measured, 'auto')[2] == pytest.approx(pp.layer_centre_z(CONFIG, 3))      # 'auto' is the default
 
 
 def test_place_on_a_stack_by_offset_and_by_height():
@@ -121,3 +144,17 @@ def test_place_on_a_stack_by_offset_and_by_height():
     assert where['centre'][2] == pytest.approx(on_two)
     low = pp.resolve_place(CONFIG, pick, dict(place, z=None))
     assert where['release'][2] - low['release'][2] == pytest.approx(2 * H)         # released 2 layers higher
+
+
+def test_height_correction_at_the_inspection_stop():
+    step, yaw_step = CONFIG['max_nudge_step'], CONFIG['max_nudge_yaw_step_deg']
+    assert pp.parse_nudge('z 0.002', step, yaw_step) == ('nudge', 0.0, 0.0, 0.0, 0.002)
+    assert pp.parse_nudge('x 0.001 z -0.003 yaw 2', step, yaw_step) == ('nudge', 0.001, 0.0, 2.0, -0.003)
+    with pytest.raises(ValueError, match='z'):
+        pp.parse_nudge('z 0.02', step, yaw_step)                                   # 20 mm in one go: refused
+    plan = pp.plan_pick(CONFIG, 0.40, 0.0)
+    before = {k: plan[k][2] for k in ('centre', 'grip', 'inspect', 'above')}
+    pp.apply_nudge(plan, 0.0, 0.0, 0.0, 0.002)
+    for key, z in before.items():
+        assert plan[key][2] == pytest.approx(z + 0.002)
+    assert plan['grip'][:2] == pytest.approx([0.40, 0.0])

@@ -28,12 +28,14 @@ Poses are in fr3_link0 (the robot base), metres; +x away from the robot, +y to i
                        0 0.05 = 5 cm to the robot's left. It follows any correction you make at the
                        inspection stop. Height: on the table.
   --place-yaw DEG      long-side angle of the placed brick (default: the angle it was picked at)
-Stacks (a brick lying on other bricks; the brick height in the config is one layer):
-  --layers N           the brick to pick is in layer N (1 = on the table, 2 = on top of one brick, ...). With a
-                       camera point the measured height must agree with that layer (table_check_tolerance) or it
-                       refuses; the grasp then uses the exact layer height, not the noisy measured one
-  --layers auto        work the layer out from the camera height; refuses when the height is between two layers
-  --place-layers N     put the brick down as layer N (works with --place, --place-offset, --place-camera-xyz)
+Height of a camera point (a brick on the table, on other bricks, or on anything else): worked out
+automatically. The measured top face is corrected by camera_height_bias; if it is within layer_snap_tolerance
+of a whole brick layer (the brick height in the config is one layer) the exact layer height is used, else the
+corrected measurement. A brick below the table or higher than max_brick_top_above_table is refused. Overrides:
+  --layers N           the brick is in layer N (1 = on the table, 2 = on top of one brick, ...): the measured
+                       height must agree within table_check_tolerance or it refuses (--layers auto = the default)
+  --place-layers N     put the brick down as layer N (with --place, --place-offset or --place-camera-xyz)
+  --use-measured-z     use the corrected measured height as it is, without snapping to a layer
   --pose-is-tcp / --place-is-tcp   the given Z is the hand (TCP) height, not the brick centre
 
 or the same poses given in the CAMERA frame (camera_color_optical_frame: x right, y down, z forward):
@@ -49,7 +51,8 @@ Conversion: p_base = T_base_hand @ T_hand_camera @ p_camera, with T_hand_camera 
 or it refuses (--use-measured-z: trust the measured height instead). Nothing is detected here.
 
 Correction commands at the inspection stop:
-  x 0.002   y -0.001   yaw 5      any combination on one line; metres / degrees, small steps only
+  x 0.002   y -0.001   z 0.002   yaw 5   any combination on one line; metres / degrees, small steps only
+                      (+z = up: the way to fix a grasp height that is a little off)
   ok = continue to lower and grasp      q = stop here (nothing is released or closed)
 
 Every arm move is a straight, collision-checked Cartesian line (smooth_motion.py, through MoveIt) at
@@ -203,8 +206,8 @@ def check_offset_place(c, pick_plan, place):
                                  f'pick is corrected by up to {reach * 1000:.0f} mm: {problem}') from None
 
 
-def parse_nudge(text, max_step, max_yaw_step_deg):
-    """'x 0.002 y -0.001 yaw 5' -> ('nudge', dx, dy, dyaw_deg); 'ok' -> ('ok',); 'q' -> ('quit',).
+def parse_nudge(text, max_step, max_yaw_step_deg, max_z_step=0.005):
+    """'x 0.002 y -0.001 z 0.002 yaw 5' -> ('nudge', dx, dy, dyaw_deg, dz); 'ok' -> ('ok',); 'q' -> ('quit',).
     Raises ValueError with a message for anything else."""
     words = text.lower().replace(',', ' ').split()
     if words in (['ok'], ['go']):
@@ -212,11 +215,11 @@ def parse_nudge(text, max_step, max_yaw_step_deg):
     if words in (['q'], ['quit']):
         return ('quit',)
     if not words or len(words) % 2:
-        raise ValueError('Type e.g.  x 0.002   or  y -0.001 yaw 5   or  ok   or  q')
-    values = {'x': 0.0, 'y': 0.0, 'yaw': 0.0}
+        raise ValueError('Type e.g.  x 0.002   or  y -0.001 yaw 5   or  z 0.002   or  ok   or  q')
+    values = {'x': 0.0, 'y': 0.0, 'z': 0.0, 'yaw': 0.0}
     for key, number in zip(words[0::2], words[1::2]):
         if key not in values:
-            raise ValueError(f"Unknown axis '{key}': use x, y or yaw")
+            raise ValueError(f"Unknown axis '{key}': use x, y, z or yaw")
         try:
             values[key] += float(number)
         except ValueError:
@@ -224,16 +227,19 @@ def parse_nudge(text, max_step, max_yaw_step_deg):
     if max(abs(values['x']), abs(values['y'])) > max_step:
         raise ValueError(f'One correction may move at most {max_step * 1000:.0f} mm in x or y '
                          '(metres: 0.002 is 2 mm)')
+    if abs(values['z']) > max_z_step:
+        raise ValueError(f'One correction may move at most {max_z_step * 1000:.0f} mm in z (metres: 0.002 is 2 mm)')
     if abs(values['yaw']) > max_yaw_step_deg:
         raise ValueError(f'One correction may turn at most {max_yaw_step_deg:.0f} degrees')
-    return ('nudge', values['x'], values['y'], values['yaw'])
+    return ('nudge', values['x'], values['y'], values['yaw'], values['z'])
 
 
-def apply_nudge(plan, dx, dy, dyaw_deg):
-    """Shift the plan sideways / turn it. Heights are untouched."""
+def apply_nudge(plan, dx, dy, dyaw_deg, dz=0.0):
+    """Shift the plan sideways / up and turn it."""
     for key in ('centre', 'grip', 'inspect', 'above'):
         plan[key][0] += dx
         plan[key][1] += dy
+        plan[key][2] += dz
     plan['yaw'] = float(wrap_line_angle(plan['yaw'] + math.radians(dyaw_deg)))
     return plan
 
@@ -299,51 +305,65 @@ def lookup_hand(node, buffer, c, seconds=10.0):
     return pose
 
 
-def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label, layers=None):
+def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label, layers=None,
+                          info=None):
     """A top-face point (and optional orientation) in the camera frame -> (x, y, centre_z or None, yaw or None).
-    Prints what it did; raises ValueError when the converted height disagrees with where the brick should be.
+    centre_z None means "a brick on the table". Prints what it did.
 
-    layers=None: a brick on the table (as before; use_measured_z trusts the measured height instead).
-    layers=N: the brick is in layer N of a stack. The measured height must be within table_check_tolerance of
-    that layer's top face, and the exact layer height is used (the camera height is only the cross-check).
-    layers='auto': the layer is worked out from the measured height; refused when it is not clearly one layer
-    (layer_auto_tolerance), because 3-7 mm of camera height error is a large part of one 9.6 mm layer."""
-    from camera_frame import camera_point_to_base, camera_yaw_to_base, table_check
+    The height is worked out automatically (layers None or 'auto'): the measured top face, minus the camera
+    height calibration (camera_height_bias: the camera sees the top face a few mm high), is snapped to the exact
+    height of the nearest brick layer when it is within layer_snap_tolerance of one, otherwise the corrected
+    measurement is used as it is. Refused: below the table, or above max_brick_top_above_table.
+    layers=N: the brick is stated to be in layer N; the corrected height must agree within table_check_tolerance.
+    use_measured_z: always the corrected measurement, no snapping.
+    info (a dict, optional) is filled with what was decided, for the log."""
+    from camera_frame import camera_point_to_base, camera_yaw_to_base
     top = camera_point_to_base(t_base_hand, t_hand_cam, xyz)
     tol = c.get('table_check_tolerance', 0.008)
     height = c['block_size'][2]
+    bias = float(c.get('camera_height_bias', 0.0))
+    top_z = float(top[2]) - bias
+    n, residual, levels = nearest_layer(c, top_z)
     where = f'{label}: camera point {list(xyz)} -> base frame x={top[0]:.4f} y={top[1]:.4f} z={top[2]:.4f}'
-    centre_z = None
-    if layers is None:
-        err = table_check(c, top[2])
-        print(f'{where} (top face; table check {err * 1000:+.1f} mm)')
-        if abs(err) > tol and not use_measured_z:
-            n, residual, levels = nearest_layer(c, top[2])
-            raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where a brick on the table should be '
-                             f'({levels:.2f} layers above the table): the camera point, the arm posture it was taken '
-                             'from, or the calibration is wrong. Retake the point with the arm still. If the brick '
-                             f'lies on other bricks, say how many layers: --layers {n} (or --place-layers {n}); '
-                             '--use-measured-z trusts the measured height instead.')
-        centre_z = float(top[2] - height / 2) if use_measured_z else None
-    else:
-        n, residual, levels = nearest_layer(c, top[2])
-        if layers == 'auto':
-            if abs(residual) > c.get('layer_auto_tolerance', 0.003):
-                other = n + 1 if residual > 0 else max(1, n - 1)
-                raise ValueError(f'{label}: the top face is {levels:.2f} layers above the table: nearest is layer {n} but '
-                                 f'{residual * 1000:+.1f} mm off, too close to call from the camera height. Say how '
-                                 f'many bricks are stacked: --layers {n} or --layers {other}.')
-            layers = n
+    if bias:
+        where += f' (camera height calibration {-bias * 1000:+.1f} mm -> z={top_z:.4f})'
+    layer_used = None
+    if isinstance(layers, int) and not isinstance(layers, bool):
         expected = layer_top_z(c, layers)
-        err = top[2] - expected
-        print(f'{where} (top face, {levels:.2f} layers above the table; layer {layers} should be at '
-              f'z={expected:.4f}: {err * 1000:+.1f} mm)')
+        err = top_z - expected
+        print(f'{where} ({levels:.2f} layers above the table; layer {layers} should be at z={expected:.4f}: '
+              f'{err * 1000:+.1f} mm)')
         if abs(err) > tol:
             raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where layer {layers} should be '
                              f'(measured {levels:.2f} layers above the table): wrong layer count, or the camera point, '
                              'the arm posture it was taken from, or the calibration is wrong.')
+        layer_used = layers
         centre_z = layer_centre_z(c, layers) if layers > 1 else None
         print(f'{label}: using the exact layer {layers} height (brick centre z={layer_centre_z(c, layers):.4f})')
+    else:
+        print(f'{where} ({levels:.2f} layers above the table)')
+        if top_z < layer_top_z(c, 1) - tol:
+            raise ValueError(f'{label}: the top face is {(layer_top_z(c, 1) - top_z) * 1000:.0f} mm BELOW a brick on the '
+                             'table: impossible. The camera point, the arm posture it was taken from (is the arm where '
+                             'the picture was taken?), or the calibration is wrong.')
+        limit = float(c.get('max_brick_top_above_table', 0.12))
+        if top_z - c['table_top_z'] > limit:
+            raise ValueError(f'{label}: the top face is {(top_z - c["table_top_z"]) * 1000:.0f} mm above the table, '
+                             f'more than max_brick_top_above_table ({limit * 1000:.0f} mm): the camera point, the arm '
+                             'posture it was taken from, or the calibration is wrong.')
+        if not use_measured_z and abs(residual) <= c.get('layer_snap_tolerance', 0.003):
+            layer_used = n
+            centre_z = layer_centre_z(c, n) if n > 1 else None
+            print(f'{label}: close to layer {n} ({residual * 1000:+.1f} mm): using the exact layer height'
+                  + (' (a brick on the table)' if n == 1 else f' (brick centre z={layer_centre_z(c, n):.4f})'))
+        else:
+            centre_z = float(top_z - height / 2)
+            why = 'as asked' if use_measured_z else f'not close to a whole layer ({residual * 1000:+.1f} mm from layer {n})'
+            print(f'{label}: using the measured height ({why}), brick centre z={centre_z:.4f}. Check the fingers '
+                  'carefully at the inspection stop: z 0.002 moves the hand up 2 mm.')
+    if info is not None:
+        info.update({'top_z_measured_m': float(top[2]), 'top_z_used_m': top_z, 'layers_above_table': levels,
+                     'layer_used': layer_used})
     yaw = None
     if quat is not None:
         yaw, tilt = camera_yaw_to_base(t_base_hand, t_hand_cam, quat, long_axis)
@@ -361,7 +381,7 @@ class Mission:
         from smooth_motion import Mover
         self.node, self.c, self.plan, self.inspect, self.given = node, c, plan, inspect, given
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
-        self.nudge = np.zeros(3)                                    # total dx, dy (m), dyaw (deg)
+        self.nudge = np.zeros(4)                                    # total dx, dy (m), dyaw (deg), dz (m)
         self.grasp_hand_yaw_deg = None
         smooth_motion.MAX_JOINT_SWING = float(c['max_joint_swing'])  # refuse big turns of joints 1-6
         smooth_motion.MAX_WRIST_SWING = float(c['max_wrist_swing'])  # joint 7 may turn further
@@ -429,15 +449,16 @@ class Mission:
         from smooth_motion import StepAbort
         c = self.c
         self.say('INSPECT: look at the fingers against the brick (from the side and from above).')
-        print('  Type a small correction, e.g.  x 0.002   y -0.001   yaw 5   (metres / degrees, base axes:\n'
-              '  +x away from the robot, +y to its left),  ok = lower and grasp,  q = stop here.')
+        print('  Type a small correction, e.g.  x 0.002   y -0.001   z 0.002   yaw 5   (metres / degrees, base\n'
+              '  axes: +x away from the robot, +y to its left, +z up),  ok = lower and grasp,  q = stop here.')
         while True:
             try:
                 answer = input('  correction> ')
             except EOFError:
                 raise StepAbort('the correction prompt needs a terminal to answer in') from None
             try:
-                command = parse_nudge(answer, c['max_nudge_step'], c['max_nudge_yaw_step_deg'])
+                command = parse_nudge(answer, c['max_nudge_step'], c['max_nudge_yaw_step_deg'],
+                                      c.get('max_nudge_z_step', 0.005))
             except ValueError as problem:
                 print(f'  {problem}')
                 continue
@@ -445,19 +466,21 @@ class Mission:
                 return
             if command[0] == 'quit':
                 raise StepAbort('stopped at your request during the inspection')
-            _, dx, dy, dyaw = command
-            total = self.nudge + np.array([dx, dy, dyaw])
-            if math.hypot(total[0], total[1]) > c['max_total_nudge'] or abs(total[2]) > 45:
-                print(f'  Total correction would be {math.hypot(total[0], total[1]) * 1000:.0f} mm / '
-                      f'{total[2]:.0f} deg: more than allowed ({c["max_total_nudge"] * 1000:.0f} mm / 45 deg). '
+            _, dx, dy, dyaw, dz = command
+            total = self.nudge + np.array([dx, dy, dyaw, dz])
+            limit_z = c.get('max_total_nudge_z', 0.015)
+            if math.hypot(total[0], total[1]) > c['max_total_nudge'] or abs(total[2]) > 45 or abs(total[3]) > limit_z:
+                print(f'  Total correction would be {math.hypot(total[0], total[1]) * 1000:.0f} mm sideways / '
+                      f'{total[3] * 1000:+.0f} mm up / {total[2]:.0f} deg: more than allowed '
+                      f'({c["max_total_nudge"] * 1000:.0f} mm / {limit_z * 1000:.0f} mm / 45 deg). '
                       'The pose is probably wrong; stop and check it.')
                 continue
-            apply_nudge(self.plan, dx, dy, dyaw)
+            apply_nudge(self.plan, dx, dy, dyaw, dz)
             self.nudge = total
             self.show_target()
             self.go('Correction', self.plan['inspect'])
             print(f'  Total correction so far: dx={total[0] * 1000:+.1f} mm  dy={total[1] * 1000:+.1f} mm  '
-                  f'dyaw={total[2]:+.1f} deg')
+                  f'dz={total[3] * 1000:+.1f} mm  dyaw={total[2]:+.1f} deg')
 
     def save_log(self):
         path = Path(self.c.get('offsets_log', 'pose_pick_offsets.json'))
@@ -467,7 +490,7 @@ class Mission:
             history = []
         entry = {'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'pose_given': self.given,
                  'correction_dx_dy_m': [float(self.nudge[0]), float(self.nudge[1])],
-                 'correction_yaw_deg': float(self.nudge[2]),
+                 'correction_yaw_deg': float(self.nudge[2]), 'correction_dz_m': float(self.nudge[3]),
                  'final_grip_xyz': self.plan['grip'], 'final_yaw_deg': math.degrees(self.plan['yaw']),
                  'hand_yaw_deg': self.grasp_hand_yaw_deg,
                  'tcp_correction_used': list(self.c.get('tcp_correction_hand') or [0.0, 0.0])}
@@ -501,7 +524,7 @@ class Mission:
         if self.inspect:
             self.correct_offset()
         self.say(f'Correction needed: dx={self.nudge[0] * 1000:+.1f} mm dy={self.nudge[1] * 1000:+.1f} mm '
-                 f'dyaw={self.nudge[2]:+.1f} deg')
+                 f'dz={self.nudge[3] * 1000:+.1f} mm dyaw={self.nudge[2]:+.1f} deg')
         self.go('Lower to the brick', p['grip'])
         from smooth_motion import hand_yaw
         self.grasp_hand_yaw_deg = math.degrees(hand_yaw(self.mover.hand_pose()[:3, :3]))   # for measure_grasp_offset.py
@@ -663,11 +686,13 @@ def main():
             plan = plan_pick(c, args.pose[0], args.pose[1], z, yaw or 0.0, args.pose_is_tcp)
             given = {'pose': args.pose, 'yaw_deg': math.degrees(plan['yaw'])}
         else:
+            height_info = {}
             x, y, centre_z, cam_yaw = resolve_camera_target(
                 c, t_base_hand, t_hand_cam, args.camera_xyz, args.camera_quat, args.camera_long_axis,
-                args.use_measured_z, 'Pick', args.layers)
+                args.use_measured_z, 'Pick', args.layers, height_info)
             plan = plan_pick(c, x, y, centre_z, cam_yaw if cam_yaw is not None else (yaw or 0.0))
-            given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw'])}
+            given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw']),
+                     **height_info}
         validate(task_config(c, plan))
         place = None
         stack_z = layer_centre_z(c, args.place_layers) if isinstance(args.place_layers, int) and args.place_layers > 1 else None

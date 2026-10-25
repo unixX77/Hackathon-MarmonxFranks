@@ -102,14 +102,18 @@ def test_long_axis_y_and_a_leaning_or_upright_brick():
 
 
 def test_table_check_and_resolving_a_camera_target():
+    bias = CONFIG['camera_height_bias']
     top_z = CONFIG['table_top_z'] + CONFIG['block_size'][2]
     assert cf.table_check(CONFIG, top_z) == pytest.approx(0)
-    on_table = camera_point_of(np.array([0.46, 0.12, top_z]))
+    on_table = camera_point_of(np.array([0.46, 0.12, top_z + bias]))              # the camera sees it `bias` too high
     x, y, centre_z, yaw = pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, on_table, None, 'x', False, 'Pick')
     assert (x, y) == pytest.approx((0.46, 0.12), abs=1e-9)
-    assert centre_z is None and yaw is None              # brick on the table: height comes from the table model
-    floating = camera_point_of(np.array([0.46, 0.12, top_z + 0.02]))
-    with pytest.raises(ValueError, match='from where a brick on the table should be'):
-        pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, floating, None, 'x', False, 'Pick')
-    x, y, centre_z, _ = pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, floating, None, 'x', True, 'Place')
-    assert centre_z == pytest.approx(top_z + 0.02 - CONFIG['block_size'][2] / 2)        # a stack: trust the measurement
+    assert centre_z is None and yaw is None              # brick on the table: height from the table model
+    # a top face 19.2 mm above a brick on the table (two bricks higher) plus 4 mm of noise: more than 3 mm from any
+    # whole layer, so nothing is refused and the corrected measurement is used as it is
+    floating = camera_point_of(np.array([0.46, 0.12, top_z + bias + 0.0192 + 0.004]))
+    x, y, centre_z, _ = pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, floating, None, 'x', False, 'Place')
+    assert centre_z == pytest.approx(top_z + 0.0192 + 0.004 - CONFIG['block_size'][2] / 2)
+    below = camera_point_of(np.array([0.46, 0.12, top_z - 0.02]))                  # 2 cm below a brick on the table
+    with pytest.raises(ValueError, match='BELOW'):
+        pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, below, None, 'x', False, 'Pick')

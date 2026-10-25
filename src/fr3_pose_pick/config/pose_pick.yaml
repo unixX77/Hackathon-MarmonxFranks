@@ -66,7 +66,16 @@ camera_frame: camera_color_optical_frame
 calibration_file: data/calibration/charuco_result.json
 allow_rejected_calibration: true
 table_check_tolerance: 0.008    # refuse when the converted top face is further than this from the table model
-layer_auto_tolerance: 0.003     # --layers auto: the nearest layer must be within this of the measured top face (m)
+# Height of a camera point is worked out automatically (brick on the table, on other bricks, or on anything):
+# the measured top face minus camera_height_bias, snapped to the exact height of the nearest brick layer when
+# within layer_snap_tolerance of one, else used as measured. Bias: in your real runs the converted top face of a
+# brick lying on the table came out 0.7 to 7.1 mm too high, 3.7 mm on average over 8 runs (spread 1.8 mm), partly
+# the studs (about 1.7 mm). Re-measure it with a few picks of a brick on the table if the camera setup changes.
+camera_height_bias: 0.0037
+layer_snap_tolerance: 0.003     # within this of a whole layer (m): use the exact layer height
+max_brick_top_above_table: 0.12 # a top face higher than this above the table is refused (m)
+max_nudge_z_step: 0.005         # one z correction at the inspection stop: at most 5 mm ...
+max_total_nudge_z: 0.015        # ... and 15 mm in total
 
 # ---- Base pad: the 2 cm spacer between the robot base and the table -----------------------
 # Footprint = the FR3 base (link0 collision mesh): 0.223 m long (x) by 0.188 m wide (y), so the
