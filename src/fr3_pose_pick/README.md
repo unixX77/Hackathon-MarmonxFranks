@@ -118,6 +118,35 @@ Measure it, do not guess it:
 Runs where you pressed `ok` without looking count as "no correction needed": use `--last` to take only the
 runs where you really checked. The arrival line shows the signed error (`dx`, `dy`) of the arm itself.
 
+## Bricks lying on other bricks (stacks)
+
+The brick height in the config (`block_size[2]`, 9.6 mm) is one layer. Layer 1 is on the table, layer 2 is on
+top of one brick, and so on. Say which layer the brick is in:
+
+```bash
+# pick the brick in layer 2 of a stack, put it down 7 cm to the left as layer 3 (on top of two bricks)
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+     --camera-xyz X Y Z --layers 2 --place-offset 0 0.07 --place-layers 3
+```
+- `--layers N` (pick) and `--place-layers N` (put down) work with `--camera-xyz` / `--place-camera-xyz`, with
+  typed `--pose` / `--place X Y`, and with `--place-offset`. With a typed pose they replace the Z.
+- With a camera point, the measured height is only a **cross-check**: it must be within
+  `table_check_tolerance` (8 mm) of that layer's top face or the script refuses. The grasp then uses the exact
+  layer height, so the 3 to 7 mm of camera height error does not move the fingers.
+- Without `--layers` the brick is assumed to be on the table, as before. If the check fails, the message says how
+  many layers the measured height corresponds to, so you can try `--layers N`.
+- `--layers auto` works the layer out from the camera height, and refuses when the height is not within
+  `layer_auto_tolerance` (3 mm) of one layer. A layer is 9.6 mm and the camera height is often 3 to 7 mm off, so
+  `auto` often refuses: then say the count yourself.
+- **Limit:** an 8 mm check cannot always tell a wrong layer count from camera error (layers are 9.6 mm apart).
+  The inspection stop is the real check: look at the fingers' height against the stack before you type `ok`.
+- The camera needs at least about 28 cm to the brick to measure depth reliably (a RealSense D435). With a tall
+  stack, keep the hand correspondingly higher when the picture is taken. A rule of thumb for a brick on the table:
+  the depth in the camera numbers is about hand height + 0.055 m, minus the height of the stack.
+- Fingertips reach about 9 mm below the hand point, so they grip the upper part of the brick and stay clear of
+  the brick below. The released brick is removed from the planning scene, and the bricks of a stack are not in it:
+  the hand comes straight down beside the brick, so keep other bricks out of the 17 mm of finger travel.
+
 ## Safety: one robot stack per ROS domain
 
 A simulation and the real robot must never run in the same ROS domain (a command can reach either).

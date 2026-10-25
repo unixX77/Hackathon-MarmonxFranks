@@ -28,6 +28,12 @@ Poses are in fr3_link0 (the robot base), metres; +x away from the robot, +y to i
                        0 0.05 = 5 cm to the robot's left. It follows any correction you make at the
                        inspection stop. Height: on the table.
   --place-yaw DEG      long-side angle of the placed brick (default: the angle it was picked at)
+Stacks (a brick lying on other bricks; the brick height in the config is one layer):
+  --layers N           the brick to pick is in layer N (1 = on the table, 2 = on top of one brick, ...). With a
+                       camera point the measured height must agree with that layer (table_check_tolerance) or it
+                       refuses; the grasp then uses the exact layer height, not the noisy measured one
+  --layers auto        work the layer out from the camera height; refuses when the height is between two layers
+  --place-layers N     put the brick down as layer N (works with --place, --place-offset, --place-camera-xyz)
   --pose-is-tcp / --place-is-tcp   the given Z is the hand (TCP) height, not the brick centre
 
 or the same poses given in the CAMERA frame (camera_color_optical_frame: x right, y down, z forward):
@@ -138,12 +144,47 @@ def plan_place(c, x, y, yaw, z=None, pose_is_tcp=False):
     return plan
 
 
+def layer_centre_z(c, layers):
+    """Height of the centre of a brick lying in layer `layers` of a stack (1 = on the table)."""
+    if isinstance(layers, bool) or not isinstance(layers, int) or layers < 1:
+        raise ValueError('layers must be a whole number, 1 or more (1 = on the table)')
+    return c['table_top_z'] + (layers - 0.5) * c['block_size'][2]
+
+
+def layer_top_z(c, layers):
+    """Height of the top face of a brick lying in layer `layers`."""
+    return layer_centre_z(c, layers) + c['block_size'][2] / 2
+
+
+def nearest_layer(c, top_z):
+    """For a measured top-face height: (nearest layer, signed distance in m from that layer's top face, layers
+    above the table as a fraction: 1.0 = a brick on the table, 2.0 = one on top of another)."""
+    levels = (top_z - c['table_top_z']) / c['block_size'][2]
+    n = max(1, int(round(levels)))
+    return n, top_z - layer_top_z(c, n), levels
+
+
+def layers_arg(text):
+    """argparse type for --layers / --place-layers: a whole number 1..10, or 'auto'."""
+    import argparse as _argparse
+    if text.strip().lower() == 'auto':
+        return 'auto'
+    try:
+        n = int(text)
+    except ValueError:
+        raise _argparse.ArgumentTypeError(f"'{text}' is not a whole number (or 'auto')") from None
+    if not 1 <= n <= 10:
+        raise _argparse.ArgumentTypeError('layers must be from 1 (on the table) to 10')
+    return n
+
+
 def resolve_place(c, pick_plan, place):
     """The place plan for the pick as it stands now. A place given as an offset follows the pick position
     (including any inspection correction, and on the table); a place yaw left out keeps the picked angle."""
     yaw = place['yaw'] if place['yaw'] is not None else pick_plan['yaw']
     if place.get('offset') is not None:
-        return plan_place(c, pick_plan['centre'][0] + place['offset'][0], pick_plan['centre'][1] + place['offset'][1], yaw)
+        return plan_place(c, pick_plan['centre'][0] + place['offset'][0], pick_plan['centre'][1] + place['offset'][1], yaw,
+                          place.get('z'))
     return plan_place(c, *place['xy'], yaw, place['z'], place['is_tcp'])
 
 
@@ -258,19 +299,51 @@ def lookup_hand(node, buffer, c, seconds=10.0):
     return pose
 
 
-def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label):
+def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label, layers=None):
     """A top-face point (and optional orientation) in the camera frame -> (x, y, centre_z or None, yaw or None).
-    Prints what it did; raises ValueError when the converted height disagrees with the table model."""
+    Prints what it did; raises ValueError when the converted height disagrees with where the brick should be.
+
+    layers=None: a brick on the table (as before; use_measured_z trusts the measured height instead).
+    layers=N: the brick is in layer N of a stack. The measured height must be within table_check_tolerance of
+    that layer's top face, and the exact layer height is used (the camera height is only the cross-check).
+    layers='auto': the layer is worked out from the measured height; refused when it is not clearly one layer
+    (layer_auto_tolerance), because 3-7 mm of camera height error is a large part of one 9.6 mm layer."""
     from camera_frame import camera_point_to_base, camera_yaw_to_base, table_check
     top = camera_point_to_base(t_base_hand, t_hand_cam, xyz)
-    err = table_check(c, top[2])
-    print(f'{label}: camera point {list(xyz)} -> base frame x={top[0]:.4f} y={top[1]:.4f} z={top[2]:.4f} '
-          f'(top face; table check {err * 1000:+.1f} mm)')
-    if abs(err) > c.get('table_check_tolerance', 0.008) and not use_measured_z:
-        raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where a brick on the table should be: '
-                         'the camera point, the arm posture it was taken from, or the calibration is wrong. '
-                         'Retake the point with the arm still, or use --use-measured-z if the brick is not '
-                         'on the table.')
+    tol = c.get('table_check_tolerance', 0.008)
+    height = c['block_size'][2]
+    where = f'{label}: camera point {list(xyz)} -> base frame x={top[0]:.4f} y={top[1]:.4f} z={top[2]:.4f}'
+    centre_z = None
+    if layers is None:
+        err = table_check(c, top[2])
+        print(f'{where} (top face; table check {err * 1000:+.1f} mm)')
+        if abs(err) > tol and not use_measured_z:
+            n, residual, levels = nearest_layer(c, top[2])
+            raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where a brick on the table should be '
+                             f'({levels:.2f} layers above the table): the camera point, the arm posture it was taken '
+                             'from, or the calibration is wrong. Retake the point with the arm still. If the brick '
+                             f'lies on other bricks, say how many layers: --layers {n} (or --place-layers {n}); '
+                             '--use-measured-z trusts the measured height instead.')
+        centre_z = float(top[2] - height / 2) if use_measured_z else None
+    else:
+        n, residual, levels = nearest_layer(c, top[2])
+        if layers == 'auto':
+            if abs(residual) > c.get('layer_auto_tolerance', 0.003):
+                other = n + 1 if residual > 0 else max(1, n - 1)
+                raise ValueError(f'{label}: the top face is {levels:.2f} layers above the table: nearest is layer {n} but '
+                                 f'{residual * 1000:+.1f} mm off, too close to call from the camera height. Say how '
+                                 f'many bricks are stacked: --layers {n} or --layers {other}.')
+            layers = n
+        expected = layer_top_z(c, layers)
+        err = top[2] - expected
+        print(f'{where} (top face, {levels:.2f} layers above the table; layer {layers} should be at '
+              f'z={expected:.4f}: {err * 1000:+.1f} mm)')
+        if abs(err) > tol:
+            raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where layer {layers} should be '
+                             f'(measured {levels:.2f} layers above the table): wrong layer count, or the camera point, '
+                             'the arm posture it was taken from, or the calibration is wrong.')
+        centre_z = layer_centre_z(c, layers) if layers > 1 else None
+        print(f'{label}: using the exact layer {layers} height (brick centre z={layer_centre_z(c, layers):.4f})')
     yaw = None
     if quat is not None:
         yaw, tilt = camera_yaw_to_base(t_base_hand, t_hand_cam, quat, long_axis)
@@ -278,7 +351,6 @@ def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_
         if tilt > 10:
             print(f'WARNING: {label}: the brick long axis leans {tilt:.0f} deg out of the table plane; '
                   'only its direction on the table is used.')
-    centre_z = float(top[2] - c['block_size'][2] / 2) if use_measured_z else None
     return float(top[0]), float(top[1]), centre_z, yaw
 
 
@@ -474,6 +546,11 @@ def main():
     parser.add_argument('--use-measured-z', action='store_true',
                         help='With camera input: use the measured brick height instead of the table model')
     parser.add_argument('--calibration', help='Hand-eye JSON (default: calibration_file in the config)')
+    parser.add_argument('--layers', type=layers_arg, metavar='N|auto',
+                        help='The brick to pick is in layer N of a stack (1 = on the table, 2 = on top of one brick, ...), '
+                             'or auto = work it out from the camera height (refuses when it cannot tell)')
+    parser.add_argument('--place-layers', type=layers_arg, metavar='N|auto',
+                        help='Put the brick down as layer N of a stack (1 = on the table, 2 = on top of one brick, ...)')
     parser.add_argument('--place-yaw', type=float, metavar='DEG',
                         help='Long-axis angle of the placed brick (default: the angle it was picked at)')
     group = parser.add_mutually_exclusive_group()
@@ -511,6 +588,21 @@ def main():
     camera_used = args.camera_xyz is not None or args.place_camera_xyz is not None
     if args.ee_pose is not None and not camera_used:
         raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
+    if args.layers is not None:
+        if args.use_measured_z:
+            raise ValueError('--layers and --use-measured-z are two ways to give the height: use one')
+        if args.pose is not None and (args.layers == 'auto' or len(args.pose) == 3):
+            raise ValueError('With --pose, --layers needs a number and no Z (it sets the height); '
+                             '--layers auto needs --camera-xyz')
+    if args.place_layers is not None:
+        if args.place is None and args.place_camera_xyz is None and args.place_offset is None:
+            raise ValueError('--place-layers needs --place, --place-camera-xyz or --place-offset')
+        if args.use_measured_z:
+            raise ValueError('--place-layers and --use-measured-z are two ways to give the height: use one')
+        if args.place_layers == 'auto' and args.place_camera_xyz is None:
+            raise ValueError('--place-layers auto needs --place-camera-xyz')
+        if args.place is not None and len(args.place) == 3:
+            raise ValueError('--place-layers sets the height: leave out the Z of --place')
     c = yaml.safe_load(open(args.config, encoding='utf-8'))
     check_tcp_correction(c)
     yaw = None
@@ -566,30 +658,32 @@ def main():
                   f'x={p[0]:.4f} y={p[1]:.4f} z={p[2]:.4f}')
         given = {}
         if args.pose is not None:
-            z = args.pose[2] if len(args.pose) == 3 else None
+            z = args.pose[2] if len(args.pose) == 3 else (
+                layer_centre_z(c, args.layers) if isinstance(args.layers, int) and args.layers > 1 else None)
             plan = plan_pick(c, args.pose[0], args.pose[1], z, yaw or 0.0, args.pose_is_tcp)
             given = {'pose': args.pose, 'yaw_deg': math.degrees(plan['yaw'])}
         else:
             x, y, centre_z, cam_yaw = resolve_camera_target(
                 c, t_base_hand, t_hand_cam, args.camera_xyz, args.camera_quat, args.camera_long_axis,
-                args.use_measured_z, 'Pick')
+                args.use_measured_z, 'Pick', args.layers)
             plan = plan_pick(c, x, y, centre_z, cam_yaw if cam_yaw is not None else (yaw or 0.0))
             given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw'])}
         validate(task_config(c, plan))
         place = None
+        stack_z = layer_centre_z(c, args.place_layers) if isinstance(args.place_layers, int) and args.place_layers > 1 else None
         if args.place is not None:
-            place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else None,
+            place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else stack_z,
                      'is_tcp': args.place_is_tcp,
                      'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
         elif args.place_camera_xyz is not None:
             x, y, centre_z, cam_yaw = resolve_camera_target(
                 c, t_base_hand, t_hand_cam, args.place_camera_xyz, args.place_camera_quat, args.camera_long_axis,
-                args.use_measured_z, 'Place')
+                args.use_measured_z, 'Place', args.place_layers)
             place_yaw = cam_yaw if cam_yaw is not None else (
                 wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None)
             place = {'xy': (x, y), 'z': centre_z, 'is_tcp': False, 'yaw': place_yaw}
         elif args.place_offset is not None:
-            place = {'offset': tuple(args.place_offset), 'xy': None, 'z': None, 'is_tcp': False,
+            place = {'offset': tuple(args.place_offset), 'xy': None, 'z': stack_z, 'is_tcp': False,
                      'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
             check_offset_place(c, plan, place)
         if place is not None:                         # a bad place pose must not leave a brick in the hand

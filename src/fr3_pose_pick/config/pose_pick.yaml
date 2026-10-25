@@ -66,6 +66,7 @@ camera_frame: camera_color_optical_frame
 calibration_file: data/calibration/charuco_result.json
 allow_rejected_calibration: true
 table_check_tolerance: 0.008    # refuse when the converted top face is further than this from the table model
+layer_auto_tolerance: 0.003     # --layers auto: the nearest layer must be within this of the measured top face (m)
 
 # ---- Base pad: the 2 cm spacer between the robot base and the table -----------------------
 # Footprint = the FR3 base (link0 collision mesh): 0.223 m long (x) by 0.188 m wide (y), so the
