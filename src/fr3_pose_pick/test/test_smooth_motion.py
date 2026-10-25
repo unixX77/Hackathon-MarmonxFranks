@@ -74,7 +74,7 @@ def test_soft_wrist_limit_leaves_room_before_the_hard_stop_and_unwind_covers_a_h
 
 
 def test_releasing_the_block_also_removes_it_from_the_world(monkeypatch):
-    """Detaching puts the block back into the scene as an obstacle; with the hand open to 17 mm that obstacle
+    """Detaching puts the block back into the scene as an obstacle; with the hand open to 18 mm that obstacle
     touches a finger and blocks the back-off. It must be removed right after the detach."""
     pytest.importorskip('moveit_msgs')
     import sys

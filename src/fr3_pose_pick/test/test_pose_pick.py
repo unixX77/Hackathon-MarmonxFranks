@@ -203,14 +203,14 @@ def test_offset_place_is_refused_up_front_if_a_correction_could_push_it_out_of_t
 
 
 def test_hand_widths_are_fixed_in_the_config():
-    assert CONFIG['open_width'] == pytest.approx(0.017)
+    assert CONFIG['open_width'] == pytest.approx(0.018)
     assert CONFIG['grasp_width'] == pytest.approx(0.015)
     assert CONFIG['grasp_width'] < CONFIG['block_size'][1] < CONFIG['open_width']    # opens wider than the brick, closes on it
 
 
 def test_jaw_clearance_note_only_when_tight():
     note = pp.jaw_clearance_note(CONFIG)
-    assert note and '17 mm' in note and '0.5 mm' in note
+    assert note and '18 mm' in note and '1.0 mm' in note
     assert pp.jaw_clearance_note(dict(CONFIG, open_width=0.025)) is None
 
 
@@ -220,7 +220,7 @@ def test_config_check_accepts_the_fixed_widths_and_still_rejects_a_hand_that_is_
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
     cfg = pp.task_config(CONFIG, pp.plan_pick(CONFIG, 0.40, 0.0))
-    assert module.validate(cfg)                                                       # 17 mm / 15 mm pass
+    assert module.validate(cfg)                                                       # 18 mm / 15 mm pass
     with pytest.raises(ValueError, match='more than the brick short side'):
         module.validate(dict(cfg, open_width=0.0165))                                 # only 0.5 mm more than the brick
     with pytest.raises(ValueError, match='more than the brick short side'):

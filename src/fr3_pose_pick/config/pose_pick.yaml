@@ -26,10 +26,10 @@ clearance: 0.10                 # hover / lift height above the grasp
 place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
-# (short side 16 mm): open 17 mm, close 15 mm. Change them here, not on the command line.
+# (short side 16 mm): open 18 mm, close 15 mm. Change them here, not on the command line.
 grasp_width: 0.015              # close to this on the brick (the real hand checks it closed on something)
-open_width: 0.017               # open to this: 0.5 mm per side around a 16 mm brick, so the hand must be
-                                # lined up to well under 1 mm sideways and in yaw, or a finger lands on the brick
+open_width: 0.018               # open to this: 1 mm per side around a 16 mm brick, so the hand must be
+                                # lined up to about 1 mm sideways and in yaw, or a finger lands on the brick
 min_open_clearance: 0.001       # smallest open_width - brick short side the config check accepts (default 5 mm)
 
 # ---- Grasp centring ---------------------------------------------------------------------------------
