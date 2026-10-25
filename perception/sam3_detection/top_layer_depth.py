@@ -47,6 +47,29 @@ def table_plane(points, threshold, iterations=500):
     return normal, offset, float(np.median(residual)), float(best.mean())
 
 
+def upper_surface(values, block_height, min_pixels):
+    """Highest substantial local height mode, excluding small high outlier groups."""
+    step = block_height / 10
+    half_band = block_height / 4
+    edges = np.arange(values.min() - step, values.max() + 2 * step, step)
+    hist, edges = np.histogram(values, edges)
+    smooth = np.convolve(hist, [1, 2, 1], mode='full')[1:-1]
+    peaks = [i for i, count in enumerate(smooth)
+             if count > 0 and count >= (smooth[i-1] if i else 0)
+             and count >= (smooth[i+1] if i+1 < len(smooth) else 0)]
+    groups = []
+    for i in peaks:
+        center = (edges[i] + edges[i+1]) / 2
+        selected = values[np.abs(values - center) <= half_band]
+        groups.append(selected)
+    largest = max((len(group) for group in groups), default=0)
+    required = max(min_pixels, int(np.ceil(len(values) * 0.25)), int(np.ceil(largest * 0.6)))
+    supported = [group for group in groups if len(group) >= required]
+    if not supported:
+        return None
+    return max(supported, key=lambda group: np.median(group))
+
+
 def filter_top(instance, depth, calibration, args):
     intr = calibration['aligned_depth_intrinsics']
     if depth.shape != (intr['height'], intr['width']):
@@ -75,16 +98,22 @@ def filter_top(instance, depth, calibration, args):
             record['reason'] = 'insufficient valid interior depth'
         else:
             values = heights[samples]
-            record['height_m'] = float(np.median(values))
             record['height_spread_m'] = float(np.percentile(values, 90) - np.percentile(values, 10))
-            record['approx_layer'] = int(np.rint(record['height_m'] / (args.block_height_mm / 1000)))
+            record['interior_median_height_m'] = float(np.median(values))
+            surface = upper_surface(values, args.block_height_mm / 1000, args.min_depth_pixels)
+            if surface is None:
+                record['reason'] = 'no sufficiently supported upper surface'
+            else:
+                record['height_m'] = float(np.median(surface))
+                record['surface_pixels'] = int(len(surface))
+                record['surface_fraction'] = float(len(surface) / len(values))
+                record['surface_spread_m'] = float(np.percentile(surface, 90) - np.percentile(surface, 10))
+                record['approx_layer'] = int(np.rint(record['height_m'] / (args.block_height_mm / 1000)))
         records.append(record)
     tolerance = args.block_height_mm / 2000
     candidates = []
     for r in records:
-        if r.get('height_spread_m', 0) > args.block_height_mm / 1000:
-            r['reason'] = 'interior depth spans more than one brick height'
-        elif r.get('height_m', 0) >= tolerance:
+        if r.get('height_m', 0) >= tolerance:
             candidates.append(r)
     # Find the highest narrow group supported by multiple instances. A lone
     # noisy maximum must not move the cutoff above a well-supported layer.
@@ -104,7 +133,7 @@ def filter_top(instance, depth, calibration, args):
               'table_median_residual_m': residual, 'table_inlier_fraction': ratio,
               'instances': records, 'top_cluster_support': len(group),
               'top_min_support': getattr(args, 'top_min_support', 2),
-              'method': 'median interior height; highest supported cluster, half-block tolerance',
+              'method': 'supported upper-surface mode per mask; highest supported instance cluster',
               'limitations': 'Experimental: assumes dominant background is table; studs/occlusions/noise can bias height.'}
     return kept, report
 
