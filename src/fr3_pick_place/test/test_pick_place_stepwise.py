@@ -204,6 +204,53 @@ class Stages(unittest.TestCase):
         self.assertEqual(starts, [measured]*9)
 
 
+class EndpointLogging(unittest.TestCase):
+    def test_failed_endpoint_is_flushed_before_abort_with_joint_and_tcp_errors(self):
+        t = task(True)
+        t.c = s.load_config(HERE.parent / 'config/task.yaml')
+        t.preview_start = RobotState()
+        t.active_motion_label = 'Approach above brick'
+        expected, actual = Pose(), Pose()
+        expected.orientation.w = 1.
+        actual.orientation.x = math.sin(math.radians(.6)/2)
+        actual.orientation.w = math.cos(math.radians(.6)/2)
+        actual.position.x = .001
+        actual.position.z = -.0003
+        t.vertical.fk.side_effect = [expected, actual]
+        measured = dict.fromkeys(s.ARM_JOINTS, .002)
+        with tempfile.TemporaryDirectory() as directory:
+            t.motion_log = s.MotionLog(directory)
+            try:
+                with self.assertRaisesRegex(RuntimeError, 'Outside endpoint tolerance'):
+                    s.StepwiseTask.check_endpoint(t, trajectory(), measured)
+                # Read while still open: failure evidence must already be flushed.
+                event = json.loads(t.motion_log.path.read_text())
+                self.assertEqual(event['event'], 'endpoint')
+                self.assertFalse(event['accepted'])
+                self.assertEqual(event['label'], 'Approach above brick')
+                self.assertAlmostEqual(event['error']['orientation_deg'], .6)
+                self.assertEqual(event['error']['xyz_m'], [.001, 0., -.0003])
+                self.assertEqual(event['error']['joints_rad'], measured)
+                self.assertEqual(event['planned']['joints_rad'], dict.fromkeys(s.ARM_JOINTS, 0.))
+                self.assertEqual(event['measured']['joints_rad'], measured)
+            finally:
+                t.motion_log.close()
+
+    def test_log_retains_multiple_events_and_separate_run_files(self):
+        with tempfile.TemporaryDirectory() as directory:
+            first, second = s.MotionLog(directory), s.MotionLog(directory)
+            try:
+                self.assertNotEqual(first.path, second.path)
+                first.write('run_start', execute=False)
+                first.write('run_end', status='aborted', error='test failure')
+                events = [json.loads(line) for line in first.path.read_text().splitlines()]
+                self.assertEqual([e['event'] for e in events], ['run_start', 'run_end'])
+                self.assertEqual(events[-1]['error'], 'test failure')
+            finally:
+                first.close()
+                second.close()
+
+
 class CameraInput(unittest.TestCase):
     def test_camera_mode_ignores_old_pose_file_and_fixes_orientation(self):
         c = s.load_config(HERE.parent / 'config/task.yaml',

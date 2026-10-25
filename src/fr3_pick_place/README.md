@@ -1,5 +1,17 @@
 # FR3 measured-position pick and place
 
+For opaque-arm/gripper animation on mock hardware, use the explicit
+`--fake-execute` mode described in [FAKE_EXECUTION.md](FAKE_EXECUTION.md).
+
+For the combined imported pick/lift/place/retreat workflow, see
+[PICK_PLACE_FINAL.md](PICK_PLACE_FINAL.md). Its destination is configured as a
+brick-center pose in `config/place_target.yaml`.
+
+For single-brick camera-driven picking with candidate lookahead, bounded
+corrections, checked descent recovery and persistent status services, use
+[`pick.py` as documented in PICK.md](PICK.md). Preview first; it stops after
+grasping and does not lift/place.
+
 For the current taught-pose Cartesian cycle, use
 [STEPWISE_PICK_PLACE.md](STEPWISE_PICK_PLACE.md). It documents the configured
 31.5 × 15.5 × 9.5 mm block, taught orientation, grasp settings and nine approvals.

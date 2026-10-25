@@ -1,0 +1,8 @@
+# Desired final BLOCK CENTER in robot-base coordinates; this is NOT TCP XYZ.
+# Single upright brick on the current table: top Z=-0.020 m, height=0.0095 m.
+frame_id: fr3_link0
+block_center_xyz_m: [0.3176477189209497, 0.05343183308846983, -0.01525]
+
+# Release nominally 2 mm above the desired center, then allow the brick to settle.
+release_clearance_m: 0.002
+approach_clearance_m: 0.1

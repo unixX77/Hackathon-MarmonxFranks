@@ -83,6 +83,15 @@ def make_planner():
 
 
 class CartesianChecks(unittest.TestCase):
+    def test_relative_jump_policy_keeps_absolute_jump_and_collision_checks(self):
+        p = make_planner()
+        p.limits = c.Limits(relative_jump_factor=10.)
+        p.plan([.45, 0., .15])
+        req = next(req for client, req in p.requests if client is p.cartesian)
+        self.assertEqual(req.jump_threshold, 10.)
+        self.assertEqual(req.revolute_jump_threshold, .1)
+        self.assertTrue(req.avoid_collisions)
+
     def test_support_touch_accepts_only_numerical_zero_depth_table_block_contact(self):
         contact = ContactInformation(contact_body_1=c.TABLE, contact_body_2=c.BLOCK, depth=0.)
         response = GetStateValidity.Response(valid=False, contacts=[contact])

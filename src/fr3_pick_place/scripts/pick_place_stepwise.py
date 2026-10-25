@@ -32,6 +32,23 @@ ARM_JOINTS = [f'fr3_joint{i}' for i in range(1, 8)]
 BLOCK = 'fr3_demo_block'
 
 
+class MotionLog:
+    """Append-only JSONL; flush each event so an aborted run retains evidence."""
+    def __init__(self, directory):
+        directory = Path(directory)
+        directory.mkdir(parents=True, exist_ok=True)
+        self.path = directory / f'stepwise_{time.time_ns()}.jsonl'
+        self.stream = self.path.open('x', encoding='utf-8')
+
+    def write(self, event, **data):
+        self.stream.write(json.dumps(dict(event=event, unix_time_s=time.time(), **data),
+                                     allow_nan=False) + '\n')
+        self.stream.flush()
+
+    def close(self):
+        self.stream.close()
+
+
 def finite_vector(value, length, label):
     if (not isinstance(value, list) or len(value) != length
             or any(isinstance(v, bool) or not isinstance(v, (int, float))
@@ -178,7 +195,8 @@ def check_start(positions, trajectory, tolerance=0.01):
 
 
 class StepwiseTask(Task):
-    def __init__(self, node, config, execute):
+    def __init__(self, node, config, execute, motion_log=None):
+        self.motion_log = motion_log
         super().__init__(node, config, execute)
         self.hardware = execute
         self.latest = {}
@@ -198,6 +216,12 @@ class StepwiseTask(Task):
                 raise RuntimeError('MoveIt execute_trajectory action unavailable.')
         self.joints = self.settled_snapshot()
         self.home = {name: self.joints[name] for name in ARM_JOINTS}
+        self.log_event('initial_state', joints_rad=self.joints, config=self.c)
+
+    def log_event(self, event, **data):
+        log = getattr(self, 'motion_log', None)
+        if log is not None:
+            log.write(event, **data)
 
     def use_camera_target(self, target):
         # Resolve once BEFORE stage 1, from the stationary observation posture.
@@ -215,9 +239,12 @@ class StepwiseTask(Task):
                 or response.pose_stamped[0].header.frame_id != BASE):
             raise RuntimeError('Flange FK failed or returned an unexpected frame.')
         xyz, q = coordinates(response.pose_stamped[0].pose)
+        self.log_event('camera_observation', target=target, joints_rad=joints,
+                       flange_xyz_m=xyz, flange_quaternion_xyzw=q)
         print(f"Camera point ({target['camera_frame']}, metres): {target['xyz_m']}", flush=True)
         print(f'Observation flange ({BASE}): xyz_m={xyz}, quaternion_xyzw={q}', flush=True)
         self.c = camera_pick_config(self.c, target, xyz, q)
+        self.log_event('resolved_camera_config', config=self.c)
         self.joints = joints
         self.home = {name: joints[name] for name in ARM_JOINTS}
         print(f'Block center ({BASE}, metres): {block_center(self.c)}')
@@ -328,6 +355,9 @@ class StepwiseTask(Task):
                                        'No old taught-posture restriction was applied; '
                                        'check reachability, orientation and scene geometry.')
                 change, solved = min(candidates, key=lambda candidate: candidate[0])
+                self.log_event('camera_ik', reference_joints_rad=reference,
+                               candidates=[dict(max_joint_change_rad=d, joints_rad=j) for d, j in candidates],
+                               selected_joints_rad=solved)
                 self.node.get_logger().info(
                     f'Camera IK seeded from current joints; max endpoint joint change {change:.3f} rad. '
                     'No taught-posture bound applied; review the planned path.')
@@ -369,6 +399,9 @@ class StepwiseTask(Task):
 
     def motion(self, label, xyz, carrying=False, placed=False):
         self.label = label
+        self.log_event('pose_goal', label=label, frame_id=BASE, tcp_link=TCP,
+                       xyz_m=list(xyz), quaternion_xyzw=self.c.get('tcp_orientation_xyzw'),
+                       carrying=carrying)
         super().motion(label, xyz, carrying=carrying, placed=placed)
 
     def hand(self, close=False):
@@ -377,6 +410,9 @@ class StepwiseTask(Task):
         self.commands.append(('hand', 'Grasp' if close else 'Open hand', close))
 
     def cartesian_motion(self, label, xyz, carrying=False, placed=False):
+        self.log_event('cartesian_goal', label=label, frame_id=BASE, tcp_link=TCP,
+                       xyz_m=list(xyz), quaternion_xyzw=self.c.get('tcp_orientation_xyzw'),
+                       carrying=carrying)
         self.node.get_logger().info(f'{label}: vertical Cartesian planning to {xyz}')
         trajectory, start_state = self.vertical.plan(xyz, carrying=carrying, placed=placed)
         if not any(kind == 'arm' for kind, _, _ in self.commands):
@@ -473,6 +509,23 @@ class StepwiseTask(Task):
         dz = actual[2]-expected[2]
         angle = math.degrees(2*math.acos(min(1., abs(sum(a*b for a, b in zip(eq, aq))))))
         report = f'Endpoint error: lateral={lateral*1000:.3f} mm, Z={dz*1000:+.3f} mm, orientation={angle:.3f} deg.'
+        planned_joints = dict(zip(jt.joint_names, jt.points[-1].positions))
+        joint_error = {n: joints[n]-planned_joints[n] for n in ARM_JOINTS}
+        limits = dict(lateral_m=self.c.get('endpoint_lateral_tolerance_m', .002),
+                      z_m=self.c.get('endpoint_z_tolerance_m', .002),
+                      orientation_deg=self.c.get('endpoint_orientation_tolerance_deg', .5),
+                      max_joint_rad=.01)
+        accepted = (lateral <= limits['lateral_m'] and abs(dz) <= limits['z_m']
+                    and angle <= limits['orientation_deg']
+                    and max(abs(v) for v in joint_error.values()) <= limits['max_joint_rad'])
+        self.log_event('endpoint', label=getattr(self, 'active_motion_label', self.label),
+                       frame_id=BASE, tcp_link=TCP,
+                       planned=dict(joints_rad=planned_joints, xyz_m=expected, quaternion_xyzw=eq),
+                       measured=dict(joints_rad=joints, xyz_m=actual, quaternion_xyzw=aq,
+                                     joint_state_stamp_s=getattr(self, 'latest_stamp', None)),
+                       error=dict(joints_rad=joint_error, xyz_m=[a-b for a, b in zip(actual, expected)],
+                                  lateral_m=lateral, z_m=dz, orientation_deg=angle),
+                       tolerances=limits, accepted=accepted)
         self.node.get_logger().info(report)
         if (lateral > self.c.get('endpoint_lateral_tolerance_m', .002)
                 or abs(dz) > self.c.get('endpoint_z_tolerance_m', .002)
@@ -519,15 +572,25 @@ class StepwiseTask(Task):
                 # Humble ExecuteTrajectory has no controllers request field;
                 # MoveIt selects the configured controller for these joints.
                 goal = ExecuteTrajectory.Goal(trajectory=payload)
+                self.active_motion_label = label
+                jt = payload.joint_trajectory
+                self.log_event('execution_start', label=label, measured_start_joints_rad=live,
+                               joint_names=list(jt.joint_names),
+                               trajectory=[dict(time_s=p.time_from_start.sec+p.time_from_start.nanosec*1e-9,
+                                                positions_rad=list(p.positions),
+                                                velocities_rad_s=list(p.velocities),
+                                                accelerations_rad_s2=list(p.accelerations)) for p in jt.points])
                 result = self.action(self.executor, goal)
+                self.log_event('execution_result', label=label, moveit_error_code=result.error_code.val)
                 if result.error_code.val != MoveItErrorCodes.SUCCESS:
                     raise RuntimeError(f'{label}: execution failed ({result.error_code.val}).')
                 q = self.settled_snapshot()
                 jt = payload.joint_trajectory
+                # Log endpoint evidence before either joint or TCP checks abort.
+                self.check_endpoint(payload, q)
                 if any(abs(q[n] - value) > 0.01
                        for n, value in zip(jt.joint_names, jt.points[-1].positions)):
                     raise RuntimeError(f'{label}: measured endpoint differs from planned endpoint.')
-                self.check_endpoint(payload, q)
 
     def run(self, stop_after=9):
         labels = [
@@ -584,6 +647,8 @@ def main():
                         help='Stop after this stage; use 3 for approach, lower and grasp only')
     parser.add_argument('--resolve-only', action='store_true',
                         help='With --camera-target, print converted targets and exit without planning/motion')
+    parser.add_argument('--log-dir', type=Path, default=Path('data/motion_logs'),
+                        help='JSONL motion logs (default: data/motion_logs relative to working directory)')
     args, ros_args = parser.parse_known_args()
     if args.resolve_only and (args.camera_target is None or args.execute):
         parser.error('--resolve-only requires --camera-target and cannot use --execute.')
@@ -593,19 +658,33 @@ def main():
         parser.error('For this staged script use velocity/acceleration scaling at most 0.05.')
     rclpy.init(args=ros_args)
     node = rclpy.create_node('fr3_pick_place_stepwise')
+    motion_log = None
     try:
-        task = StepwiseTask(node, config, args.execute)
+        motion_log = MotionLog(args.log_dir)
+        print(f'Motion log: {motion_log.path.resolve()}', flush=True)
+        motion_log.write('run_start', execute=args.execute, stop_after=args.stop_after,
+                         config_path=str(args.config), poses_path=str(args.poses) if args.poses else None,
+                         camera_target_path=str(args.camera_target) if args.camera_target else None,
+                         resolve_only=args.resolve_only, config=config)
+        task = StepwiseTask(node, config, args.execute, motion_log=motion_log)
         if camera_target is not None:
             task.use_camera_target(camera_target)
         if not args.resolve_only:
             task.run(stop_after=args.stop_after)
             node.get_logger().info(f'Completed through stage {args.stop_after}.')
+        motion_log.write('run_end', status='completed')
     except (OperatorStop, EOFError, KeyboardInterrupt):
+        if motion_log is not None:
+            motion_log.write('run_end', status='operator_stopped')
         node.get_logger().warning('Stopped. No automatic gripper release or return home. Inspect the robot.')
     except Exception as exc:
+        if motion_log is not None:
+            motion_log.write('run_end', status='aborted', error=str(exc))
         node.get_logger().error(f'Aborted: {exc}. No automatic release or recovery.')
         return 1
     finally:
+        if motion_log is not None:
+            motion_log.close()
         node.destroy_node()
         rclpy.shutdown()
     return 0

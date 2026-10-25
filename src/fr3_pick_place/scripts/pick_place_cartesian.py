@@ -29,6 +29,10 @@ BLOCK = 'fr3_demo_block'
 TABLE = 'fr3_demo_table'
 
 
+class PlanningInfrastructureError(RuntimeError):
+    """Planning services/scene restoration failed; do not try another motion."""
+
+
 def is_support_touch(validity, carrying):
     """Only numerical zero-depth contact with the support, never robot contact."""
     return (carrying and bool(validity.contacts)
@@ -47,6 +51,7 @@ class Limits:
     sample_period_s: float = 0.02
     sample_joint_step_rad: float = 0.01
     max_validation_samples: int = 5000
+    relative_jump_factor: float = 2.0
 
 
 def coordinates(pose):
@@ -207,9 +212,12 @@ class CartesianPlanner:
             self.check_interpolation()
 
     def call(self, client, req, timeout=30):
-        result = self.task.wait(client.call_async(req), timeout)
+        try:
+            result = self.task.wait(client.call_async(req), timeout)
+        except TimeoutError as exc:
+            raise PlanningInfrastructureError(str(exc)) from exc
         if result is None:
-            raise RuntimeError('MoveIt service returned no response.')
+            raise PlanningInfrastructureError('MoveIt service returned no response.')
         return result
 
     @contextmanager
@@ -243,7 +251,7 @@ class CartesianPlanner:
         failure = None
         try:
             if not self.call(self.apply, ApplyPlanningScene.Request(scene=diff)).success:
-                raise RuntimeError('Could not install Cartesian collision scene.')
+                raise PlanningInfrastructureError('Could not install Cartesian collision scene.')
             yield original.robot_state
         except BaseException as exc:
             failure = exc
@@ -251,7 +259,7 @@ class CartesianPlanner:
         finally:
             if not self.call(self.apply, ApplyPlanningScene.Request(scene=restore)).success:
                 detail = f' Original failure: {failure}' if failure is not None else ''
-                raise RuntimeError('Could not restore the planning scene; abort and inspect it.' + detail) from failure
+                raise PlanningInfrastructureError('Could not restore the planning scene; abort and inspect it.' + detail) from failure
 
     def state(self, original, carrying, joints):
         state = copy.deepcopy(original)
@@ -364,7 +372,7 @@ class CartesianPlanner:
             req.start_state = state
             req.group_name, req.link_name = 'fr3_arm', TCP
             req.max_step = self.limits.step_m
-            req.jump_threshold = 2.0
+            req.jump_threshold = self.limits.relative_jump_factor
             req.revolute_jump_threshold = self.limits.max_joint_step_rad
             req.avoid_collisions = True
             if not hasattr(req, 'max_velocity_scaling_factor'):

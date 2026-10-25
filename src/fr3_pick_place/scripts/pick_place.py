@@ -81,7 +81,13 @@ def rotate_vector(q, v):
 def block_object(c, carrying=False, placed=False):
     """Axis-aligned world block, with the same pose transformed into TCP when held."""
     if not carrying:
-        return box('fr3_demo_block', c['block_size'], block_center(c, placed))
+        obj = box('fr3_demo_block', c['block_size'], block_center(c, placed))
+        if placed and 'placed_block_pose' in c:
+            target = c['placed_block_pose']
+            p = obj.primitive_poses[0]
+            p.position.x, p.position.y, p.position.z = target['xyz_m']
+            p.orientation.x, p.orientation.y, p.orientation.z, p.orientation.w = target['quaternion_xyzw']
+        return obj
     obj = box('fr3_demo_block', c['block_size'], [0., 0., 0.], 'fr3_hand_tcp')
     if 'attached_block_pose' in c:
         attachment = c['attached_block_pose']

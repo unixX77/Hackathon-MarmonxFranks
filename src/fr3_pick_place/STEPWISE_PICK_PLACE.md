@@ -169,6 +169,30 @@ That is a calibration workflow, not an automatically running publisher. With
 RealSense publishing its internal camera frames, publish only the flange/hand
 to `camera_link` mounting edge; do not give an optical frame a second parent.
 
+## Motion logs
+
+Every invocation writes a unique `data/motion_logs/stepwise_<timestamp>.jsonl`
+file relative to the working directory and prints its absolute path. Change the
+directory with `--log-dir PATH`. Events are flushed immediately, including the
+endpoint measurement before a tolerance failure. These generated files are
+ignored by Git. No execution or automatic recovery is enabled by logging.
+
+The log contains the effective config, initial joints, camera observation and
+flange pose, resolved target, camera IK candidates/selection, requested pose
+goals, commanded joint trajectories, MoveIt execution result codes, and settled
+endpoint measurements. Endpoint events include planned and measured TCP XYZ,
+quaternions, joint angles, per-joint errors, XYZ error, orientation error,
+tolerances and acceptance status. TCP coordinates use MoveIt forward kinematics
+and are not independent physical metrology. The joint-state timestamp belongs
+to the measured snapshot; this is not continuous tracking telemetry.
+
+Run-end events distinguish completed, stopped and aborted runs. A completed
+preview is not hardware validation. Motion failures can have a result event
+without an endpoint event if execution or measurement failed. Requested pose
+goals and planned FK endpoints are logged separately so planning tolerance is
+not confused with execution tracking error. Logs contain no singularity metric
+yet. In preview mode no actual execution endpoint is recorded.
+
 ## Tracking note — 2026-10-24
 
 Observed: a -5 mm jog produced -6.414 mm Z displacement, 0.701 mm lateral drift,
