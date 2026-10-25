@@ -115,7 +115,7 @@ def test_the_stored_correction_is_valid_and_small():
     assert len(value) == 2 and max(abs(value[0]), abs(value[1])) <= 0.010
     pose_pick = load('pose_pick')
     pose_pick.check_tcp_correction(config)
-    assert value == pytest.approx([-0.0100, 0.0], abs=1e-9)          # the stored real measurement
+    assert value == pytest.approx([-0.0100, 0.0030], abs=1e-9)    # the stored real measurement
 
 
 def test_move_commands_the_corrected_point_and_returns_it():
