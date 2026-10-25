@@ -16,8 +16,26 @@ import numpy as np
 # FR3 joint speed limits (rad/s). Moves run at a small fraction of these.
 VMAX = np.array([2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26])
 RAMP_SECONDS = 1.5          # time to reach cruise speed, and to stop again
-MAX_JOINT_SWING = 2.0       # refuse any single move that turns one joint by more than this (rad)
+MAX_JOINT_SWING = 2.0       # refuse any single move that turns one of joints 1-6 by more than this (rad)
+MAX_WRIST_SWING = 2.0       # same for joint 7, the wrist: a 90 degree hand yaw is ~1.6 rad by itself
 MIN_FRACTION = 0.999        # the whole straight line must be reachable and collision free
+WRIST_SOFT_LIMIT = 2.4      # rad: joint 7 may travel to +-3.05. Past this, try the other equivalent hand yaw
+UNWIND_WRIST_SWING = 3.4    # rad: that other yaw is 180 degrees (3.14 rad) away, so allow that much wrist turn
+
+
+def swing_violation(swing, arm_limit, wrist_limit):
+    """(joint number, swing, limit) of the first joint that turns too far in one move, else None.
+    Joints 1-6 use arm_limit; joint 7 (wrist rotation, harmless in free space) uses wrist_limit."""
+    for index, value in enumerate(swing):
+        limit = wrist_limit if index == 6 else arm_limit
+        if value > limit:
+            return index + 1, float(value), float(limit)
+    return None
+
+
+def wrist_excursion(positions):
+    """Largest |joint 7| along a joint path (rad): how close the wrist gets to its +-3.05 stop."""
+    return float(np.max(np.abs(np.asarray(positions, dtype=float)[:, 6])))
 
 
 class StepAbort(Exception):
@@ -139,15 +157,11 @@ class Mover:
                 raise StepAbort('stopped at your request')
 
     # ------------------------------------------------------------------- motion
-    def move(self, label, xyz, yaw=None):
-        """Straight line to xyz with the tool pointing down. yaw is the jaw-axis angle (mod pi);
-        None keeps the current hand yaw."""
+    def plan_line(self, label, xyz, target_yaw, wrist_limit):
+        """Collision-checked straight line to xyz with the jaws at target_yaw. Returns None when the
+        hand is already there, else (trajectory message, joint path q, joint swing)."""
         from geometry_msgs.msg import Pose
-        from moveit_msgs.msg import MoveItErrorCodes
         from moveit_msgs.srv import GetCartesianPath
-        current = self.hand_pose()
-        now_yaw = hand_yaw(current[:3, :3])
-        target_yaw = now_yaw if yaw is None else nearest_yaw(yaw, now_yaw)
         target = Pose()
         target.position.x, target.position.y, target.position.z = map(float, xyz)
         (target.orientation.x, target.orientation.y,
@@ -165,18 +179,53 @@ class Mover:
         response = self.wait(self.path_client.call_async(request), 20)
         points = response.solution.joint_trajectory.points
         if response.fraction >= MIN_FRACTION and len(points) < 2:
-            self.node.get_logger().info(f'{label}: already there')
-            return
+            return None
         if response.fraction < MIN_FRACTION or len(points) < 2:
             raise RuntimeError(f'{label}: straight line not possible (reached {response.fraction * 100:.0f} %, '
                                f'MoveIt code {response.error_code.val}); stopping instead of improvising')
         q = np.array([p.positions for p in points])
         swing = np.abs(q.max(axis=0) - q.min(axis=0))
-        if swing.max() > MAX_JOINT_SWING:
-            raise RuntimeError(f'{label}: would swing joint {int(swing.argmax()) + 1} by '
-                               f'{swing.max():.2f} rad; refusing')
+        too_far = swing_violation(swing, MAX_JOINT_SWING, wrist_limit)
+        if too_far:
+            raise RuntimeError(f'{label}: would swing joint {too_far[0]} by {too_far[1]:.2f} rad '
+                               f'(limit {too_far[2]:.2f}); refusing')
+        return response.solution, q, swing
+
+    def move(self, label, xyz, yaw=None):
+        """Straight line to xyz with the tool pointing down. yaw is the jaw-axis angle (mod pi);
+        None keeps the current hand yaw.
+
+        The jaws are symmetric, so yaw and yaw +- pi are the same grasp. The one closest to the current
+        hand yaw is tried first (least wrist turn). If that is refused, or would take the wrist (joint 7)
+        past WRIST_SOFT_LIMIT, the other one is tried and the plan that keeps the wrist further from its
+        stop wins: otherwise a long series of picks slowly winds the wrist up against its limit."""
+        current = self.hand_pose()
+        now_yaw = hand_yaw(current[:3, :3])
+        first = now_yaw if yaw is None else nearest_yaw(yaw, now_yaw)
+        other = first + math.pi if first <= now_yaw else first - math.pi
+        plans, failure = [], None
+        for target_yaw, wrist_limit in ((first, MAX_WRIST_SWING), (other, UNWIND_WRIST_SWING)):
+            if plans and wrist_excursion(plans[0][2][1]) <= WRIST_SOFT_LIMIT:
+                break                                   # the nearest yaw is fine: no need to look further
+            if yaw is None and target_yaw != first:
+                break                                   # keeping the current yaw: no alternative
+            try:
+                plan = self.plan_line(label, xyz, target_yaw, wrist_limit)
+            except RuntimeError as problem:
+                failure = failure or problem
+                continue
+            if plan is None:
+                self.node.get_logger().info(f'{label}: already there')
+                return
+            plans.append((target_yaw, wrist_limit, plan))
+        if not plans:
+            raise failure
+        target_yaw, _, (trajectory, q, swing) = min(plans, key=lambda item: wrist_excursion(item[2][1]))
+        if target_yaw != first:
+            self.node.get_logger().info(f'{label}: the nearest hand yaw was refused or leaves the wrist near its '
+                                        f'stop: using the equivalent yaw {math.degrees(target_yaw):.0f} deg instead')
+        points = trajectory.joint_trajectory.points
         times, velocities = retime(q, self.scale)
-        trajectory = response.solution
         trajectory.multi_dof_joint_trajectory.points = []
         for point, t, v in zip(points, times, velocities):
             point.time_from_start.sec = int(t)
@@ -186,8 +235,8 @@ class Mover:
         distance = float(np.linalg.norm(np.array(xyz) - current[:3, 3]))
         summary = (f'{distance * 100:.0f} cm straight line to x={xyz[0]:.3f} y={xyz[1]:.3f} z={xyz[2]:.3f}, '
                    f'hand yaw {math.degrees(now_yaw):.0f} -> {math.degrees(target_yaw):.0f} deg, '
-                   f'biggest joint turn {swing.max():.2f} rad, about {times[-1]:.0f} s at '
-                   f'{self.scale * 100:.0f} % speed')
+                   f'biggest joint turn {swing.max():.2f} rad, wrist reaches {wrist_excursion(q):.2f} rad, '
+                   f'about {times[-1]:.0f} s at {self.scale * 100:.0f} % speed')
         self.node.get_logger().info(f'{label}: {summary}')
         self.ask_step(label, 'Planned, not moving yet: ' + summary)
         self.execute(label, trajectory)
@@ -236,8 +285,9 @@ class Mover:
     def prepare_scene(self):
         """Table in the scene, nothing left over from earlier runs."""
         from moveit_msgs.msg import CollisionObject
-        from spawn_scene import BRICK_ID, TABLE_ID, apply_scene, table_object
-        apply_scene(self.node, add=[table_object(self.c)], remove=(BRICK_ID,), strict=False)
+        from spawn_scene import BRICK_ID, TABLE_ID, apply_scene, base_pad_objects, table_object
+        apply_scene(self.node, add=[table_object(self.c)] + base_pad_objects(self.c), remove=(BRICK_ID,),
+                    strict=False)
         self.detach_block()
         apply_scene(self.node, remove=('fr3_demo_block',), strict=False)
 

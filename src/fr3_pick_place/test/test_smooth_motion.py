@@ -50,3 +50,23 @@ def test_retime_short_move_still_valid():
     q = np.linspace(np.zeros(7), np.full(7, 0.002), 5)
     t, v = sm.retime(q, 0.05)
     assert np.all(np.diff(t) > 0) and np.isfinite(v).all()
+
+
+def test_wrist_has_its_own_swing_limit():
+    flat = [0.1] * 7
+    assert sm.swing_violation(flat, 1.5, 2.2) is None
+    assert sm.swing_violation([0.1] * 6 + [1.6], 1.5, 2.2) is None          # ~90 degree hand yaw is fine
+    assert sm.swing_violation([0.1] * 6 + [2.3], 1.5, 2.2)[0] == 7
+    joint, value, limit = sm.swing_violation([0.1, 0.1, 1.6, 0.1, 0.1, 0.1, 0.1], 1.5, 2.2)
+    assert (joint, limit) == (3, 1.5) and value == 1.6                      # an arm joint is held to the tight limit
+
+
+def test_wrist_excursion_is_the_largest_joint7_magnitude():
+    path = np.zeros((4, 7))
+    path[:, 6] = [0.5, 1.9, -2.6, 2.2]
+    assert sm.wrist_excursion(path) == 2.6
+
+
+def test_soft_wrist_limit_leaves_room_before_the_hard_stop_and_unwind_covers_a_half_turn():
+    assert sm.WRIST_SOFT_LIMIT < 3.05 - 0.5          # FR3 joint 7 stops at +-3.0508 rad
+    assert sm.UNWIND_WRIST_SWING > math.pi           # the equivalent yaw is 180 degrees away
