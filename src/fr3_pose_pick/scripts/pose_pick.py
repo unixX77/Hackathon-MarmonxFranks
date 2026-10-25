@@ -218,6 +218,18 @@ def task_config(c, plan):
     return cfg
 
 
+def check_tcp_correction(c):
+    """tcp_correction_hand must be two small numbers (metres). More than 1 cm is a typo or a unit mistake."""
+    value = c.get('tcp_correction_hand')
+    if value is None:
+        return
+    if not (isinstance(value, (list, tuple)) and len(value) == 2
+            and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in value)):
+        raise ValueError('tcp_correction_hand must be two numbers [along, across] in metres')
+    if max(abs(value[0]), abs(value[1])) > 0.010:
+        raise ValueError(f'tcp_correction_hand {list(value)} is more than 10 mm: it is in METRES (0.002 is 2 mm)')
+
+
 def jaw_clearance_note(c):
     """One line about how tight the open hand is around the brick, or None when it is roomy (>= 2 mm a side)."""
     side = (c['open_width'] - c['block_size'][1]) / 2
@@ -278,6 +290,7 @@ class Mission:
         self.node, self.c, self.plan, self.inspect, self.given = node, c, plan, inspect, given
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
         self.nudge = np.zeros(3)                                    # total dx, dy (m), dyaw (deg)
+        self.grasp_hand_yaw_deg = None
         smooth_motion.MAX_JOINT_SWING = float(c['max_joint_swing'])  # refuse big turns of joints 1-6
         smooth_motion.MAX_WRIST_SWING = float(c['max_wrist_swing'])  # joint 7 may turn further
         self.marker_type = Marker
@@ -328,9 +341,9 @@ class Mission:
 
     def go(self, label, xyz, yaw=None):
         """One straight, approved move, then compare where the hand really is with the target."""
-        self.mover.move(label, xyz, yaw=self.plan['yaw'] if yaw is None else yaw)
+        commanded = self.mover.move(label, xyz, yaw=self.plan['yaw'] if yaw is None else yaw)
         self.spin(0.5)
-        err = self.mover.hand_pose()[:3, 3] - np.array(xyz)
+        err = self.mover.hand_pose()[:3, 3] - np.array(commanded if commanded is not None else xyz)
         xy, z = math.hypot(err[0], err[1]), float(err[2])
         self.say(f'  arrived: {xy * 1000:.1f} mm sideways (dx={err[0] * 1000:+.1f} dy={err[1] * 1000:+.1f}), '
                  f'{z * 1000:+.1f} mm in height from the target')
@@ -383,7 +396,9 @@ class Mission:
         entry = {'time': time.strftime('%Y-%m-%d %H:%M:%S'), 'pose_given': self.given,
                  'correction_dx_dy_m': [float(self.nudge[0]), float(self.nudge[1])],
                  'correction_yaw_deg': float(self.nudge[2]),
-                 'final_grip_xyz': self.plan['grip'], 'final_yaw_deg': math.degrees(self.plan['yaw'])}
+                 'final_grip_xyz': self.plan['grip'], 'final_yaw_deg': math.degrees(self.plan['yaw']),
+                 'hand_yaw_deg': self.grasp_hand_yaw_deg,
+                 'tcp_correction_used': list(self.c.get('tcp_correction_hand') or [0.0, 0.0])}
         if self.place is not None:
             where = self.place_plan()
             entry['place_xyz'], entry['place_yaw_deg'] = where['grip'], math.degrees(where['yaw'])
@@ -416,6 +431,8 @@ class Mission:
         self.say(f'Correction needed: dx={self.nudge[0] * 1000:+.1f} mm dy={self.nudge[1] * 1000:+.1f} mm '
                  f'dyaw={self.nudge[2]:+.1f} deg')
         self.go('Lower to the brick', p['grip'])
+        from smooth_motion import hand_yaw
+        self.grasp_hand_yaw_deg = math.degrees(hand_yaw(self.mover.hand_pose()[:3, :3]))   # for measure_grasp_offset.py
         self.mover.hand(close=True)
         self.say('Grasp reported success')
         self.mover.attach_block()
@@ -495,6 +512,7 @@ def main():
     if args.ee_pose is not None and not camera_used:
         raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
     c = yaml.safe_load(open(args.config, encoding='utf-8'))
+    check_tcp_correction(c)
     yaw = None
     if args.quat:
         yaw, tilt = yaw_from_quaternion(args.quat)
@@ -591,6 +609,10 @@ def main():
         note = jaw_clearance_note(c)
         if note:
             print(note)
+        correction = c.get('tcp_correction_hand')
+        if correction and any(correction):
+            print(f'Grasp centring in force (tcp_correction_hand, hand frame): along the long side '
+                  f'{correction[0] * 1000:+.1f} mm, across it {correction[1] * 1000:+.1f} mm')
         print('This will MOVE THE ARM AND HAND.')
         if not (simulated and args.yes):
             if input('Hold the e-stop, clear the workspace. Type GO to start: ').strip() != 'GO':

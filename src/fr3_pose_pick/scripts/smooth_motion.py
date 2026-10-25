@@ -52,6 +52,14 @@ def hand_yaw(rotation):
     return math.atan2(rotation[1, 0], rotation[0, 0])
 
 
+def hand_frame_to_base(offset, yaw):
+    """A small vector given in the hand's own frame (x along the brick's long side, y across it, the way the
+    jaws close; the hand points down) as a vector (x, y) in the base frame, for a hand turned by `yaw`.
+    Hand x is (cos, sin) and hand y is (sin, -cos) in the base frame: at yaw 0, hand y is base -y."""
+    c, s = math.cos(yaw), math.sin(yaw)
+    return (offset[0] * c + offset[1] * s, offset[0] * s - offset[1] * c)
+
+
 def nearest_yaw(axis_yaw, current_yaw):
     """The jaws are symmetric, so axis_yaw and axis_yaw +- pi are the same grasp. Take the one
     closest to the current hand yaw: the wrist then never turns more than 90 degrees."""
@@ -191,6 +199,12 @@ class Mover:
                                f'(limit {too_far[2]:.2f}); refusing')
         return response.solution, q, swing
 
+    def corrected(self, xyz, yaw):
+        """The point to command so that the real middle between the fingertips ends up at xyz: xyz plus the
+        measured tcp_correction_hand from the config, turned with the hand. Zero when the setting is absent."""
+        ox, oy = hand_frame_to_base(self.c.get('tcp_correction_hand') or (0.0, 0.0), yaw)
+        return [float(xyz[0]) + ox, float(xyz[1]) + oy, float(xyz[2])]
+
     def move(self, label, xyz, yaw=None):
         """Straight line to xyz with the tool pointing down. yaw is the jaw-axis angle (mod pi);
         None keeps the current hand yaw.
@@ -209,18 +223,19 @@ class Mover:
                 break                                   # the nearest yaw is fine: no need to look further
             if yaw is None and target_yaw != first:
                 break                                   # keeping the current yaw: no alternative
+            commanded = self.corrected(xyz, target_yaw)
             try:
-                plan = self.plan_line(label, xyz, target_yaw, wrist_limit)
+                plan = self.plan_line(label, commanded, target_yaw, wrist_limit)
             except RuntimeError as problem:
                 failure = failure or problem
                 continue
             if plan is None:
                 self.node.get_logger().info(f'{label}: already there')
-                return
-            plans.append((target_yaw, wrist_limit, plan))
+                return commanded
+            plans.append((target_yaw, wrist_limit, plan, commanded))
         if not plans:
             raise failure
-        target_yaw, _, (trajectory, q, swing) = min(plans, key=lambda item: wrist_excursion(item[2][1]))
+        target_yaw, _, (trajectory, q, swing), commanded = min(plans, key=lambda item: wrist_excursion(item[2][1]))
         if target_yaw != first:
             self.node.get_logger().info(f'{label}: the nearest hand yaw was refused or leaves the wrist near its '
                                         f'stop: using the equivalent yaw {math.degrees(target_yaw):.0f} deg instead')
@@ -240,6 +255,7 @@ class Mover:
         self.node.get_logger().info(f'{label}: {summary}')
         self.ask_step(label, 'Planned, not moving yet: ' + summary)
         self.execute(label, trajectory)
+        return commanded                    # the point that was actually commanded (target + tcp_correction_hand)
 
     def execute(self, label, trajectory):
         from action_msgs.msg import GoalStatus

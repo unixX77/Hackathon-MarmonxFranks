@@ -31,6 +31,15 @@ grasp_width: 0.015              # close to this on the brick (the real hand chec
 open_width: 0.017               # open to this: 0.5 mm per side around a 16 mm brick, so the hand must be
                                 # lined up to well under 1 mm sideways and in yaw, or a finger lands on the brick
 min_open_clearance: 0.001       # smallest open_width - brick short side the config check accepts (default 5 mm)
+
+# ---- Grasp centring ---------------------------------------------------------------------------------
+# The real middle between the fingertips can sit a little off the point the arm is told to go to. That
+# shows up as a grasp slightly off the centre of the brick, while placing stays right (the same offset
+# is in the arm at the place). This value is added to EVERY commanded hand position, pick and place.
+# Metres, in the HAND frame: [along the brick's long side, across it (the way the jaws close)].
+# At hand yaw 0: along = base +x (away from the robot), across = base -y. Do not guess it: measure it
+# with  python3 src/fr3_pose_pick/scripts/measure_grasp_offset.py  (see the README), which prints this line.
+tcp_correction_hand: [0.0, 0.0]
 grasp_force: 10.0
 gripper_speed: 0.02
 velocity_scale: 0.05

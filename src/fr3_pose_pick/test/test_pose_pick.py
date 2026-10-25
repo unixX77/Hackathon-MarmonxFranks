@@ -225,3 +225,11 @@ def test_config_check_accepts_the_fixed_widths_and_still_rejects_a_hand_that_is_
         module.validate(dict(cfg, open_width=0.0165))                                 # only 0.5 mm more than the brick
     with pytest.raises(ValueError, match='more than the brick short side'):
         module.validate({k: v for k, v in cfg.items() if k != 'min_open_clearance'})  # without the setting: the 5 mm rule
+
+
+def test_tcp_correction_must_be_two_small_numbers_in_metres():
+    pp.check_tcp_correction({})                                          # absent: fine
+    pp.check_tcp_correction({'tcp_correction_hand': [0.0025, -0.0012]})
+    for bad in ([0.0025], [0.0025, 0.0, 0.0], [2.5, 1.0], [0.02, 0.0], ['a', 0.0], [float('nan'), 0.0], 0.002):
+        with pytest.raises(ValueError, match='tcp_correction_hand'):
+            pp.check_tcp_correction({'tcp_correction_hand': bad})

@@ -94,6 +94,30 @@ start, and the hand has to be lined up to well under 1 mm sideways and in yaw: u
 and expect the occasional finger landing on the brick. A hand narrower than the brick plus
 `min_open_clearance` is still refused.
 
+## Grasp slightly off the centre of the brick: measure it once, store it for good
+
+If picking and placing are accurate but the fingers close a little off the middle of the brick, the real
+middle between the fingertips sits a small, fixed distance from the point the arm is told to go to. Placing
+stays right because the same offset is in the arm at the place. The cure is `tcp_correction_hand` in
+`config/pose_pick.yaml`: metres, `[along the brick's long side, across it]` in the **hand's own frame**
+(at hand yaw 0: along = base +x, across = base -y), added to **every** commanded hand position, pick and place.
+
+Measure it, do not guess it:
+1. Do 3 to 5 picks with the inspection stop. At `correction>`, nudge (`x 0.002`, `y -0.001`, up to 10 mm per
+   command) until the fingers look centred on the brick (a scale helps), then `ok`. Use different spots and angles.
+2. From the folder where you ran `pose_pick.py`:
+   ```bash
+   python3 src/fr3_pose_pick/scripts/measure_grasp_offset.py --last 5
+   ```
+   It turns every correction into the hand frame (so the brick angle does not matter), averages them and prints
+   the spread. Both numbers should be well under 1.5 mm; if the runs disagree, the offset depends on where the
+   brick is and one value will not fix it.
+3. Store it: `... --last 5 --apply src/fr3_pose_pick/config/pose_pick.yaml` (the old file is kept as `.bak`).
+4. Run again. Corrections you still type are added to the stored value, so you can repeat it to refine.
+
+Runs where you pressed `ok` without looking count as "no correction needed": use `--last` to take only the
+runs where you really checked. The arrival line shows the signed error (`dx`, `dy`) of the arm itself.
+
 ## Safety: one robot stack per ROS domain
 
 A simulation and the real robot must never run in the same ROS domain (a command can reach either).
