@@ -213,7 +213,19 @@ def task_config(c, plan):
                              'acceleration_scale', 'grasp_force', 'grasp_width', 'gripper_speed',
                              'open_width', 'base_frame', 'ee_frame')}
     cfg['pick'] = cfg['place'] = list(plan['grip'])
+    if 'min_open_clearance' in c:
+        cfg['min_open_clearance'] = c['min_open_clearance']
     return cfg
+
+
+def jaw_clearance_note(c):
+    """One line about how tight the open hand is around the brick, or None when it is roomy (>= 2 mm a side)."""
+    side = (c['open_width'] - c['block_size'][1]) / 2
+    if side >= 0.002:
+        return None
+    return (f'NOTE: the hand opens to {c["open_width"] * 1000:.0f} mm and closes to {c["grasp_width"] * 1000:.0f} mm for a '
+            f'{c["block_size"][1] * 1000:.0f} mm brick: only {side * 1000:.1f} mm of room per side. Sideways or yaw '
+            'errors over that put a finger on the brick: use the inspection stop.')
 
 
 # --------------------------------------------------------------------------- ROS part
@@ -575,6 +587,9 @@ def main():
             where = mission.place_plan()
             print(f'Place pose: x={where["centre"][0]:.3f} y={where["centre"][1]:.3f} z={where["centre"][2]:.4f}  '
                   f'yaw={math.degrees(where["yaw"]):.0f} deg   (release with the hand at z={where["release"][2]:.4f})')
+        note = jaw_clearance_note(c)
+        if note:
+            print(note)
         print('This will MOVE THE ARM AND HAND.')
         if not (simulated and args.yes):
             if input('Hold the e-stop, clear the workspace. Type GO to start: ').strip() != 'GO':

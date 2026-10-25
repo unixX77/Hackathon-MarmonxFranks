@@ -39,8 +39,11 @@ def validate(c):
         v = c.get(key)
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not low < v <= high:
             raise ValueError(f'{key} must be in ({low}, {high}]')
-    if c['block_size'][1] + 0.005 > c['open_width']:
-        raise ValueError('Block Y width needs at least 5 mm clearance in the open hand')
+    needed = c.get('min_open_clearance', 0.005)
+    if c['block_size'][1] + needed > c['open_width'] + 1e-9:
+        raise ValueError(f'The open hand ({c["open_width"] * 1000:.1f} mm) needs at least {needed * 1000:.1f} mm '
+                         f'more than the brick short side ({c["block_size"][1] * 1000:.1f} mm) '
+                         '(min_open_clearance in the config)')
     if c['grasp_width'] >= c['open_width']:
         raise ValueError('grasp_width must be smaller than open_width')
     top = c['table_center'][2] + c['table_size'][2] / 2

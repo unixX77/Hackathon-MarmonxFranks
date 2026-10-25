@@ -200,3 +200,28 @@ def test_offset_place_is_refused_up_front_if_a_correction_could_push_it_out_of_t
         pp.check_offset_place(CONFIG, edge, place)
     with pytest.raises(ValueError):
         pp.check_offset_place(CONFIG, pp.plan_pick(CONFIG, 0.30, 0.0), {**place, 'offset': (-0.05, 0.0)})
+
+
+def test_hand_widths_are_fixed_in_the_config():
+    assert CONFIG['open_width'] == pytest.approx(0.017)
+    assert CONFIG['grasp_width'] == pytest.approx(0.015)
+    assert CONFIG['grasp_width'] < CONFIG['block_size'][1] < CONFIG['open_width']    # opens wider than the brick, closes on it
+
+
+def test_jaw_clearance_note_only_when_tight():
+    note = pp.jaw_clearance_note(CONFIG)
+    assert note and '17 mm' in note and '0.5 mm' in note
+    assert pp.jaw_clearance_note(dict(CONFIG, open_width=0.025)) is None
+
+
+def test_config_check_accepts_the_fixed_widths_and_still_rejects_a_hand_that_is_too_narrow():
+    pytest.importorskip('rclpy')                                  # pick_place imports ROS
+    spec = importlib.util.spec_from_file_location('pick_place_for_test', ROOT / 'scripts' / 'pick_place.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cfg = pp.task_config(CONFIG, pp.plan_pick(CONFIG, 0.40, 0.0))
+    assert module.validate(cfg)                                                       # 17 mm / 15 mm pass
+    with pytest.raises(ValueError, match='more than the brick short side'):
+        module.validate(dict(cfg, open_width=0.0165))                                 # only 0.5 mm more than the brick
+    with pytest.raises(ValueError, match='more than the brick short side'):
+        module.validate({k: v for k, v in cfg.items() if k != 'min_open_clearance'})  # without the setting: the 5 mm rule

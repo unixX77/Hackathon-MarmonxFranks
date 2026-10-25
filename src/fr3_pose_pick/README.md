@@ -84,6 +84,16 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
 - The hand-eye result missed its strict gate (typical error about 3 mm / 0.9 deg), so expect a few mm
   of error from the conversion alone: use the inspection stop to correct it.
 
+## Hand widths (fixed in the config)
+
+`config/pose_pick.yaml` sets the hand once for every open and close: **open 17 mm** (`open_width`) and
+**close 15 mm** (`grasp_width`), for a 16 mm brick with other bricks right next to it. Nothing to type
+on the command line. `min_open_clearance: 0.001` lowers the config check from its default 5 mm margin
+to the 1 mm that 17 mm leaves. That is only 0.5 mm of room per side, so the script prints a note at each
+start, and the hand has to be lined up to well under 1 mm sideways and in yaw: use the inspection stop,
+and expect the occasional finger landing on the brick. A hand narrower than the brick plus
+`min_open_clearance` is still refused.
+
 ## Safety: one robot stack per ROS domain
 
 A simulation and the real robot must never run in the same ROS domain (a command can reach either).
