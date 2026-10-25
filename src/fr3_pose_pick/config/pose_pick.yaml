@@ -39,7 +39,11 @@ min_open_clearance: 0.001       # smallest open_width - brick short side the con
 # Metres, in the HAND frame: [along the brick's long side, across it (the way the jaws close)].
 # At hand yaw 0: along = base +x (away from the robot), across = base -y. Do not guess it: measure it
 # with  python3 src/fr3_pose_pick/scripts/measure_grasp_offset.py  (see the README), which prints this line.
-tcp_correction_hand: [0.0, 0.0]
+# Stored 2026-10-25 from ONE real pick (brick on a stack, hand yaw 0): the fingers had to move 10.0 mm toward
+# the robot (base -x = along the long side) and 0 mm sideways to look centred. One pick is a rough value: keep
+# using the inspection stop, then refine it with  measure_grasp_offset.py --last 5 --apply <this file>  (the
+# corrections you still type are added to this value). The previous file is in git history.
+tcp_correction_hand: [-0.0100, 0.0000]
 grasp_force: 10.0
 gripper_speed: 0.02
 velocity_scale: 0.05
