@@ -1,0 +1,160 @@
+"""Pure-logic checks for pose_pick: grasp heights, workspace limits, yaw handling."""
+import importlib.util
+import json
+import math
+from pathlib import Path
+
+import pytest
+import yaml
+
+ROOT = Path(__file__).resolve().parents[1]
+spec = importlib.util.spec_from_file_location('pp', ROOT / 'scripts' / 'pose_pick.py')
+pp = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(pp)
+CONFIG = yaml.safe_load(open(ROOT / 'config' / 'pose_pick.yaml', encoding='utf-8'))
+
+
+def test_brick_on_table_defaults():
+    plan = pp.plan_pick(CONFIG, 0.45, 0.10)
+    top, h = CONFIG['table_top_z'], CONFIG['block_size'][2]
+    assert plan['centre'][2] == pytest.approx(top + h / 2)
+    assert plan['grip'][2] == pytest.approx(top + CONFIG['grasp_tcp_height'])
+    assert plan['above'][2] == pytest.approx(plan['grip'][2] + CONFIG['clearance'])
+    assert plan['block_in_tcp'][2] == pytest.approx(CONFIG['grasp_tcp_height'] - h / 2)
+
+
+def test_explicit_centre_z_and_tcp_z_agree():
+    by_centre = pp.plan_pick(CONFIG, 0.4, 0.0, z=-0.0152)
+    by_tcp = pp.plan_pick(CONFIG, 0.4, 0.0, z=by_centre['grip'][2], pose_is_tcp=True)
+    assert by_tcp['centre'][2] == pytest.approx(by_centre['centre'][2])
+
+
+@pytest.mark.parametrize('x, y', [(0.1, 0.0), (0.7, 0.0), (0.4, 0.5), (0.4, -0.5)])
+def test_pose_outside_workspace_is_refused(x, y):
+    with pytest.raises(ValueError, match='outside the allowed window'):
+        pp.plan_pick(CONFIG, x, y)
+
+
+def test_fingers_never_planned_into_the_table():
+    with pytest.raises(ValueError):
+        pp.plan_pick(CONFIG, 0.4, 0.0, z=CONFIG['table_top_z'] - 0.01)
+    with pytest.raises(ValueError, match='below the table'):
+        pp.plan_pick(CONFIG, 0.4, 0.0, z=CONFIG['table_top_z'] + 0.005, pose_is_tcp=True)
+    strict = dict(CONFIG, min_tcp_above_table=0.015)       # fingertip rule on its own
+    with pytest.raises(ValueError, match='fingertips'):
+        pp.plan_pick(strict, 0.4, 0.0)
+
+
+def test_hover_too_high_and_missing_tcp_z():
+    with pytest.raises(ValueError, match='max_hover_z'):
+        pp.plan_pick(CONFIG, 0.4, 0.0, z=0.6)
+    with pytest.raises(ValueError, match='needs a z'):
+        pp.plan_pick(CONFIG, 0.4, 0.0, pose_is_tcp=True)
+
+
+def test_quaternion_yaw_and_line_wrap():
+    yaw, tilt = pp.yaw_from_quaternion((0, 0, math.sin(0.3), math.cos(0.3)))      # 0.6 rad about z
+    assert yaw == pytest.approx(0.6) and tilt == pytest.approx(0, abs=1e-6)
+    _, tilt = pp.yaw_from_quaternion((math.sin(0.2), 0, 0, math.cos(0.2)))
+    assert tilt == pytest.approx(math.degrees(0.4))
+    assert pp.wrap_line_angle(math.radians(200)) == pytest.approx(math.radians(20))
+    assert pp.wrap_line_angle(math.radians(-100)) == pytest.approx(math.radians(80))
+    assert pp.wrap_line_angle(math.pi / 2) == pytest.approx(math.pi / 2)
+    with pytest.raises(ValueError):
+        pp.yaw_from_quaternion((0, 0, 0, 0))
+
+
+def test_task_config_has_what_the_mover_needs():
+    cfg = pp.task_config(CONFIG, pp.plan_pick(CONFIG, 0.45, 0.10))
+    for key in ('pick', 'place', 'block_size', 'table_center', 'table_size', 'grasp_width', 'open_width',
+                'velocity_scale', 'base_frame', 'ee_frame'):
+        assert key in cfg
+
+
+def test_inspection_height_sits_between_grasp_and_hover():
+    plan = pp.plan_pick(CONFIG, 0.45, 0.10)
+    assert plan['grip'][2] < plan['inspect'][2] < plan['above'][2]
+    assert plan['inspect'][2] - plan['grip'][2] == pytest.approx(CONFIG['inspect_height'])
+    with pytest.raises(ValueError, match='inspect_height'):
+        pp.plan_pick(dict(CONFIG, inspect_height=0.2), 0.45, 0.10)
+
+
+def test_correction_commands_and_limits():
+    step, yaw_step = CONFIG['max_nudge_step'], CONFIG['max_nudge_yaw_step_deg']
+    assert pp.parse_nudge('ok', step, yaw_step) == ('ok',)
+    assert pp.parse_nudge('Q', step, yaw_step) == ('quit',)
+    assert pp.parse_nudge('x 0.002', step, yaw_step) == ('nudge', 0.002, 0.0, 0.0)
+    assert pp.parse_nudge('y -0.001, yaw 5', step, yaw_step) == ('nudge', 0.0, -0.001, 5.0)
+    for bad in ('', 'x', 'z 0.001', 'x abc', 'x 0.05', 'yaw 40', 'y 0.011'):
+        with pytest.raises(ValueError):
+            pp.parse_nudge(bad, step, yaw_step)
+
+
+def test_apply_nudge_moves_xy_and_yaw_but_not_heights():
+    plan = pp.plan_pick(CONFIG, 0.45, 0.10, yaw=math.radians(10))
+    heights = [plan[k][2] for k in ('centre', 'grip', 'inspect', 'above')]
+    pp.apply_nudge(plan, 0.003, -0.002, 5)
+    for key in ('centre', 'grip', 'inspect', 'above'):
+        assert plan[key][:2] == pytest.approx([0.453, 0.098])
+    assert [plan[k][2] for k in ('centre', 'grip', 'inspect', 'above')] == heights
+    assert math.degrees(plan['yaw']) == pytest.approx(15)
+
+
+def test_hand_tilt():
+    from scipy.spatial.transform import Rotation
+    down = Rotation.from_euler('x', math.pi)
+    assert pp.hand_tilt_deg(down.as_matrix()) == pytest.approx(0, abs=1e-6)
+    assert pp.hand_tilt_deg((Rotation.from_euler('y', 30, degrees=True) * down).as_matrix()) == pytest.approx(30)
+    assert pp.hand_tilt_deg(Rotation.identity().as_matrix()) == pytest.approx(180)      # pointing up
+
+
+def test_camera_point_uses_the_full_chain():
+    import numpy as np
+    found = [p for p in (ROOT.parents[1] / 'charuco_result.json',
+                         ROOT.parents[1] / 'data' / 'calibration' / 'charuco_result.json') if p.exists()]
+    if not found:
+        pytest.skip('charuco_result.json not found')
+    t_ee_cam = np.array(json.load(open(found[0]))['T_ee_camera'])
+    from scipy.spatial.transform import Rotation
+    hand = np.eye(4)
+    hand[:3, :3] = (Rotation.from_euler('xy', [10, -6], degrees=True) * Rotation.from_euler('x', math.pi)).as_matrix()
+    hand[:3, 3] = [0.40, 0.02, 0.45]
+    p_cam = [0.01, -0.02, 0.43]
+    expected = (hand @ t_ee_cam @ np.array(p_cam + [1.0]))[:3]
+    assert pp.camera_point_to_base(hand, t_ee_cam, p_cam) == pytest.approx(expected)
+    assert np.linalg.norm(pp.camera_point_to_base(hand, np.eye(4), p_cam) - expected) > 0.03   # calibration matters
+
+
+@pytest.mark.parametrize('name', ['pose_pick.yaml', 'lego.yaml'])
+def test_base_pad_sits_between_robot_base_and_table(name):
+    c = yaml.safe_load(open(ROOT / 'config' / name, encoding='utf-8'))
+    size, centre = c['base_pad_size'], c['base_pad_center']
+    assert size[2] == pytest.approx(0.02)                                   # 2 cm tall
+    assert centre[2] + size[2] / 2 == pytest.approx(0.0)                    # top face = underside of the base
+    assert centre[2] - size[2] / 2 == pytest.approx(c['table_top_z'])       # bottom face rests on the table
+    # footprint of the FR3 base (link0 collision mesh): x -0.1528..0.0701, y -0.0944..0.0938
+    assert (size[0], size[1]) == pytest.approx((0.223, 0.188), abs=0.002)
+    assert centre[0] - size[0] / 2 == pytest.approx(-0.1528, abs=0.002)
+    assert centre[0] + size[0] / 2 == pytest.approx(0.0701, abs=0.002)
+
+
+def test_place_plan_stops_above_the_table_by_the_margin():
+    plan = pp.plan_place(CONFIG, 0.40, -0.15, math.radians(30))
+    grip = CONFIG['table_top_z'] + CONFIG['grasp_tcp_height']
+    assert plan['grip'][2] == pytest.approx(grip)
+    assert plan['release'][2] == pytest.approx(grip + CONFIG['place_margin'])
+    assert plan['release'][:2] == plan['grip'][:2] == [0.40, -0.15]
+    assert plan['yaw'] == pytest.approx(math.radians(30))
+
+
+def test_place_pose_gets_the_same_checks_as_a_pick():
+    with pytest.raises(ValueError, match='outside the allowed window'):
+        pp.plan_place(CONFIG, 0.40, 0.45, 0.0)
+    with pytest.raises(ValueError, match='place_margin'):
+        pp.plan_place(dict(CONFIG, place_margin=-0.001), 0.40, 0.0, 0.0)
+
+
+def test_yaw_error_is_symmetric_and_ignores_180_degree_flips():
+    assert pp.yaw_error_deg(math.radians(10), math.radians(12)) == pytest.approx(2.0)
+    assert pp.yaw_error_deg(math.radians(89), math.radians(-89)) == pytest.approx(2.0)
+    assert pp.yaw_error_deg(math.radians(30), math.radians(210)) == pytest.approx(0.0, abs=1e-9)

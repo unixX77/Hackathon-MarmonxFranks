@@ -1,7 +1,9 @@
 import sys, yaml, time, numpy as np, cv2
-sys.path.insert(0,'/home/ameed/franka_ws/src/fr3_pick_place/scripts')
+from pathlib import Path
+HERE = Path(__file__).resolve().parent
+sys.path.insert(0, str(HERE))
 import handeye_calibrate as h
-c=yaml.safe_load(open(sys.argv[1] if len(sys.argv)>1 else '/home/ameed/franka_ws/src/fr3_pick_place/config/handeye_charuco.yaml'))
+c=yaml.safe_load(open(sys.argv[1] if len(sys.argv)>1 else str(HERE.parent / 'config' / 'handeye_charuco.yaml')))
 import rclpy; rclpy.init(); col=h.Collector(c)
 dic,board=h.make_board(c); col.spin(1.5)
 k=np.array(col.info.k).reshape(3,3); d=np.array(col.info.d)

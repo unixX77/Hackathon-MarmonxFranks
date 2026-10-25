@@ -21,6 +21,7 @@ from std_msgs.msg import ColorRGBA
 
 TABLE_ID = 'fr3_demo_table'
 BRICK_ID = 'lego_brick'
+BASE_PAD_ID = 'fr3_base_pad'
 
 
 def make_box(name, size, xyz, yaw=0.0, frame='fr3_link0'):
@@ -52,14 +53,30 @@ def apply_scene(node, add=(), remove=(), colours=(), strict=True):
     for name in remove:
         scene.world.collision_objects.append(CollisionObject(id=name, operation=CollisionObject.REMOVE))
     scene.object_colors = list(colours)
-    future = client.call_async(ApplyPlanningScene.Request(scene=scene))
-    rclpy.spin_until_future_complete(node, future, timeout_sec=15)
-    if not future.done() or not (future.result().success or not strict):
+    # A fresh client's first request is sometimes never answered (DDS discovery race). The update is a
+    # diff (ADD replaces, REMOVE of a missing object is harmless), so asking again is safe.
+    for attempt in range(3):
+        future = client.call_async(ApplyPlanningScene.Request(scene=scene))
+        rclpy.spin_until_future_complete(node, future, timeout_sec=5)
+        if future.done():
+            break
+        client.remove_pending_request(future)
+    else:
+        raise RuntimeError('MoveIt did not answer the planning-scene update (3 tries of 5 s)')
+    if not (future.result().success or not strict):
         raise RuntimeError('MoveIt rejected the planning-scene update')
 
 
 def table_object(c):
     return make_box(TABLE_ID, c['table_size'], c['table_center'])
+
+
+def base_pad_objects(c):
+    """The spacer/bracket between the robot base and the table (empty if the config has none).
+    Same length and width as the base footprint, from the config's base_pad_size / base_pad_center."""
+    if 'base_pad_size' not in c:
+        return []
+    return [make_box(BASE_PAD_ID, c['base_pad_size'], c['base_pad_center'])]
 
 
 def brick_object(c, x, y, yaw):
@@ -83,11 +100,17 @@ def main():
     node = rclpy.create_node('spawn_lego_scene')
     try:
         if args.remove:
-            apply_scene(node, remove=(TABLE_ID, BRICK_ID))
-            print('Removed table and brick from the planning scene.')
+            apply_scene(node, remove=(TABLE_ID, BRICK_ID, BASE_PAD_ID))
+            print('Removed table, base pad and brick from the planning scene.')
             return
         add, colours = [table_object(c)], [colour(TABLE_ID, 0.55, 0.55, 0.6, 0.9)]
         text = f'table top at z={c["table_top_z"]:.3f} m'
+        pad = base_pad_objects(c)
+        if pad:
+            add += pad
+            colours.append(colour(BASE_PAD_ID, 0.95, 0.65, 0.1, 0.9))
+            text += (f', base pad {c["base_pad_size"][0] * 100:.1f} x {c["base_pad_size"][1] * 100:.1f} x '
+                     f'{c["base_pad_size"][2] * 100:.1f} cm under the robot base')
         if not args.no_brick:
             x, y = args.brick_xy or c['sim_brick_xy']
             yaw = math.radians(args.brick_yaw if args.brick_yaw is not None else c['sim_brick_yaw_deg'])
