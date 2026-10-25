@@ -1,0 +1,65 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="olv-n5g01">
+  <!-- 
+    olv-n5g01 Macro
+    Parameters:
+    - namespace: give this n5g a name
+    - parent_link: Define which link the n5g is mounted to
+    - mounting_side: Specifies the mounting side of the cam.
+      Acceptable values are: 'lower', 'right'
+    - mounting_rotation: Specifies an additional rotation around the n5g's mounting frame's z-axis
+-->
+  <xacro:macro params="namespace:=olv_n5g01 parent_link mounting_side mounting_rotation"
+    name="olv-n5g01">
+    <link name="${namespace}_body_link">
+      <visual>
+        <geometry>
+          <mesh filename="package://olv_module_descriptions/meshes/olv-n5g01.dae" />
+        </geometry>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.04 0.04 0.018" />
+        </geometry>
+      </collision>
+    </link>
+    <link name="${namespace}_right_link" />
+    <link name="${namespace}_lower_link"/>
+
+    <!-- Check for unexpected value and print warning -->
+    <xacro:if
+      value="${mounting_side != 'right' and mounting_side != 'lower'}">
+      <xacro:warning>Unexpected value for mounting_side in olv-n5g01 macro. Accepted values are
+        'right', 'lower'. Using default 'right'.</xacro:warning>
+      <xacro:property name="mounting_side" value="right" />
+    </xacro:if>
+
+    <!-- Conditional translations based on mount_frame -->
+    <xacro:if value="${mounting_side == 'right'}">
+      <xacro:property name="mount_translation" value="0 0 0.009" />
+      <xacro:property name="mount_rotation" value="0 0 ${mounting_rotation}" />
+    </xacro:if>
+    <xacro:if value="${mounting_side == 'lower'}">
+      <xacro:property name="mount_translation" value="0 0 0.009" />
+      <xacro:property name="mount_rotation" value="0 3.14159265359 ${mounting_rotation}" />
+    </xacro:if>
+
+
+    <joint name="${namespace}_body_joint" type="fixed">
+      <parent link="${parent_link}" />
+      <child link="${namespace}_body_link" />
+      <origin xyz="${mount_translation}" rpy="${mount_rotation}" />
+    </joint>
+
+    <joint name="${namespace}_right_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_right_link" />
+      <origin xyz="0 0 -0.009" rpy="3.14159265359 0 -1.57079632679" />
+    </joint>
+    <joint name="${namespace}_lower_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_lower_link" />
+      <origin xyz="0 0 0.009" rpy="0 0 0" />
+    </joint>
+  </xacro:macro>
+</robot>

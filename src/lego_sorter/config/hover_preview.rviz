@@ -1,0 +1,67 @@
+# Isolated visualization of /lego_sorter/hover_preview.
+# Open in the existing RViz instance to retain its robot_description parameters.
+# Contains no MotionPlanning display or execution controls.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+  - Class: rviz_common/Views
+    Name: Views
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Value: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+      Color: 110; 110; 110
+    - Class: moveit_rviz_plugin/Trajectory
+      Name: Hover Preview
+      Enabled: true
+      Value: true
+      Robot Description: robot_description
+      Trajectory Topic: /lego_sorter/hover_preview
+      Show Robot Visual: true
+      Show Robot Collision: false
+      Robot Alpha: 1
+      Color Enabled: true
+      Robot Color: 190; 70; 240
+      State Display Time: 1x
+      Use Sim Time: false
+      Loop Animation: true
+      Interrupt Display: true
+      Show Trail: false
+      Trail Step Size: 1
+      Links:
+        All Links Enabled: true
+        Expand Joint Details: false
+        Expand Link Details: false
+        Expand Tree: false
+        Link Tree Style: Links in Alphabetic Order
+  Enabled: true
+  Global Options:
+    Fixed Frame: fr3_link0
+    Background Color: 35; 35; 35
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+    - Class: rviz_default_plugins/Select
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 1.4
+      Focal Point:
+        X: 0.25
+        Y: 0.0
+        Z: 0.25
+      Pitch: 0.35
+      Yaw: 0.7
+      Target Frame: <Fixed Frame>
+Window Geometry:
+  Width: 1600
+  Height: 1000
+  Hide Left Dock: false
+  Hide Right Dock: false

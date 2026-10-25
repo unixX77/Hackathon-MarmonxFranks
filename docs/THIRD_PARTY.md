@@ -1,0 +1,9 @@
+# Reference provenance and attribution
+
+See `provenance.json` for source repository paths, exact commits, SHA-256 hashes and extracted function names. All copies are inside `src/lego_sorter/lego_sorter/vendor`.
+
+* **Ameed — project-ameed, fr3_pose_pick**: `smooth_motion.py` is retained as `ameed_motion.py`. Six pure functions from `pose_pick.py` are retained in `ameed_plans.py`. The reference package declares Apache-2.0; its license text is reproduced in `Apache-2.0.txt`. Original file documentation is preserved for the whole-file copy. The independent adapter subclasses the Mover; the original CLI is never executed. Unused baseline methods referring to spawn_scene are overridden or not called.
+* **Perception team — project-main**: `top_layer_bricks.py`, `top_layer_depth.py`, and `segment_lego_sam3_single_prompt.py` are whole-file, narrowly dependency-scoped copies of the selected detector and its two direct local dependencies. No capture data, model weights, classifier pipeline or dependency repository is copied. No repository-wide license file was found during inspection; preserve the team's applicable source rights before redistributing these copies.
+* **Tanay — hackathon_ros2_ws**: `pick.py`, `pick_core.py`, `place.py` and task/calibration configurations were inspected. Fresh stamped feedback, explicit uncertain outcomes and verification-before-release informed the new adapter; no source code from this alternative was copied and its manipulation stack was not substituted. Its optional Jacobian/singularity auditing is not implemented here.
+
+Reference Git states at inspection: project-main and project-ameed detached HEAD, clean; hackathon_ros2_ws branch tanay, clean. No reference files or branches were modified. The integration destination was absent and was created without initializing or changing any reference Git repository.

@@ -1,0 +1,49 @@
+# Open in the existing RViz to retain robot_description parameters.
+# Poses are paced by scripts/play_hover_preview.py, not the Trajectory player.
+Panels:
+  - Class: rviz_common/Displays
+    Name: Displays
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Class: rviz_default_plugins/Grid
+      Name: Grid
+      Enabled: true
+      Value: true
+      Cell Size: 0.1
+      Plane Cell Count: 20
+      Reference Frame: <Fixed Frame>
+    - Class: moveit_rviz_plugin/RobotState
+      Name: Wall Clock Hover Preview
+      Enabled: true
+      Value: true
+      Robot Description: robot_description
+      Robot State Topic: /lego_sorter/hover_preview_state
+      Robot Alpha: 1
+      Visual Enabled: true
+      Collision Enabled: false
+      Show Highlights: true
+      Show All Links: true
+  Enabled: true
+  Global Options:
+    Fixed Frame: fr3_link0
+    Background Color: 35; 35; 35
+    Frame Rate: 30
+  Tools:
+    - Class: rviz_default_plugins/MoveCamera
+  Views:
+    Current:
+      Class: rviz_default_plugins/Orbit
+      Name: Current View
+      Distance: 1.4
+      Focal Point:
+        X: 0.25
+        Y: 0.0
+        Z: 0.25
+      Pitch: 0.35
+      Yaw: 0.7
+      Target Frame: <Fixed Frame>
+Window Geometry:
+  Width: 1600
+  Height: 1000
+  Hide Left Dock: false

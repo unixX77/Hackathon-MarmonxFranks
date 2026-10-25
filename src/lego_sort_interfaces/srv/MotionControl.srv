@@ -1,0 +1,10 @@
+string command
+string token
+string observation_id
+builtin_interfaces/Time capture_stamp
+---
+bool success
+string detail
+string token
+uint64 motion_epoch
+string hand_state

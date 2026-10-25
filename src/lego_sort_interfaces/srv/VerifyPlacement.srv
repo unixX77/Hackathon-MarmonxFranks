@@ -1,0 +1,5 @@
+string slot_id
+string transaction_id
+---
+bool verified
+string evidence

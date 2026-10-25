@@ -1,0 +1,48 @@
+<?xml version="1.0"?>
+<!--
+  Gazebo entry point for the TMR v0.2 mobile base (without arms).
+
+  Includes the franka_description robot entry point and applies the
+  ros2_control hardware interface for gazebo simulation.
+-->
+
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="tmrv0_2_gazebo">
+
+  <!-- Spawn the base robot in gazebo mode. Declared before the description
+       include so it overrides the entry point's default (false); CLI -D wins. -->
+  <xacro:arg name="gazebo" default="true"/>
+
+  <!-- ================================================================ -->
+  <!-- Macro includes                                                    -->
+  <!-- ================================================================ -->
+  <!-- Base robot: reuses the description entry point (declares robot_type,
+       reduced_version, robot_namespace, gazebo and instantiates the robot). -->
+  <xacro:include filename="$(find franka_description)/robots/tmrv0_2/tmrv0_2.urdf.xacro"/>
+  <xacro:include filename="$(find franka_hardware)/ros2_control/tmrv0_2.ros2_control.xacro"/>
+
+  <!-- ================================================================ -->
+  <!-- ros2_control hardware interface (gazebo mode)                    -->
+  <!-- ================================================================ -->
+  <xacro:tmrv0_2_ros2_control
+    mobile_robot_type="$(arg robot_type)"
+    include_passive_base="true">
+    <hardware_plugin>
+      <plugin>gz_ros2_control/GazeboSimSystem</plugin>
+    </hardware_plugin>
+  </xacro:tmrv0_2_ros2_control>
+
+  <!-- gz_ros2_control system element (sibling of ros2_control) -->
+  <gazebo>
+    <plugin filename="gz_ros2_control-system" name="gz_ros2_control::GazeboSimROS2ControlPlugin">
+      <parameters>$(find franka_gazebo_bringup)/config/franka_gazebo_controllers.yaml</parameters>
+      <!-- Bring the controller_manager up under the robot namespace so the mobile-base
+           spawners find it at /${robot_namespace}/controller_manager. -->
+      <xacro:if value="${'$(arg robot_namespace)' != ''}">
+        <ros>
+          <namespace>/$(arg robot_namespace)</namespace>
+        </ros>
+      </xacro:if>
+    </plugin>
+  </gazebo>
+
+</robot>

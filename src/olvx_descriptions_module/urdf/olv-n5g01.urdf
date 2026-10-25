@@ -1,0 +1,6 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="olv-n5g01-robot">
+    <xacro:include filename="$(find olv_module_descriptions)/urdf/olv-n5g01.urdf.xacro" />
+    <link name="olive"/>
+    <xacro:olv-n5g01 namespace="olv-n5g01" parent_link="olive" mounting_side="right" mounting_rotation="0"/>
+</robot>

@@ -1,0 +1,5 @@
+string purpose
+---
+bool success
+string detail
+lego_sort_interfaces/Observation observation

@@ -1,0 +1,49 @@
+[
+  {
+    "source": "src/fr3_pose_pick/scripts/smooth_motion.py",
+    "repository": "/home/tanay/Documents/Hackathon/project-ameed",
+    "commit": "b5a4a4d4fbff01d4a63a74b5ecc2b0f72c9ebeb4",
+    "sha256": "806339a485cb8bca718dd2d7009e5432286a96253989103c40dcfd0aef289a00",
+    "destination": "src/lego_sorter/lego_sorter/vendor/ameed_motion.py",
+    "extracted": null
+  },
+  {
+    "source": "src/fr3_pose_pick/scripts/pose_pick.py",
+    "repository": "/home/tanay/Documents/Hackathon/project-ameed",
+    "commit": "b5a4a4d4fbff01d4a63a74b5ecc2b0f72c9ebeb4",
+    "sha256": "774fcb4f15f5e9171aa89a1949544aab9e8ace6ab1ef6fd39c3eaf6fb66b9702",
+    "destination": "src/lego_sorter/lego_sorter/vendor/ameed_plans.py",
+    "extracted": [
+      "wrap_line_angle",
+      "plan_pick",
+      "plan_place",
+      "layer_centre_z",
+      "layer_top_z",
+      "nearest_layer"
+    ]
+  },
+  {
+    "source": "perception/sam3_detection/top_layer_bricks.py",
+    "repository": "/home/tanay/Documents/Hackathon/project-main",
+    "commit": "5dc0a746a071cfa6f2d2bf4626b22238f0ac0108",
+    "sha256": "afaa83bec8035ab4f7f19d3de752863428963e8f9fe3ebc29423adc3a44fe054",
+    "destination": "src/lego_sorter/lego_sorter/vendor/top_layer_bricks.py",
+    "extracted": null
+  },
+  {
+    "source": "perception/sam3_detection/top_layer_depth.py",
+    "repository": "/home/tanay/Documents/Hackathon/project-main",
+    "commit": "5dc0a746a071cfa6f2d2bf4626b22238f0ac0108",
+    "sha256": "065bd4815ce895d3b3f34bf48442506f16b901feaa55dcb8d2f439ef3adcad46",
+    "destination": "src/lego_sorter/lego_sorter/vendor/top_layer_depth.py",
+    "extracted": null
+  },
+  {
+    "source": "perception/sam3_detection/segment_lego_sam3_single_prompt.py",
+    "repository": "/home/tanay/Documents/Hackathon/project-main",
+    "commit": "5dc0a746a071cfa6f2d2bf4626b22238f0ac0108",
+    "sha256": "8adbe522533e6aa7c6a12108b4169d5b2b25bbd55bb24ea86f7018786ffe378c",
+    "destination": "src/lego_sorter/lego_sorter/vendor/segment_lego_sam3_single_prompt.py",
+    "extracted": null
+  }
+]

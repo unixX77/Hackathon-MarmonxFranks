@@ -1,0 +1,157 @@
+# Requested red lattice hardware preparation template: NOT EXECUTABLE YET.
+# Stud detachment, seating and trash-box handling are unsupported in hardware.
+# All origins, drop heights, capacity and geometry require physical measurement.
+mode: hardware
+runtime: /home/tanay/Documents/Hackathon/project-planner/runtime/hardware-red-lattice-01
+hardware_validated: false
+base_frame: fr3_link0
+ee_frame: fr3_hand_tcp
+camera_frame: camera_color_optical_frame
+calibration_parent: fr3_hand_tcp
+calibration_file: /home/tanay/Documents/Hackathon/project-planner/src/lego_sorter/config/calibration/charuco_result.json
+calibration_matrix_key: T_ee_camera
+# Explicit operator override: use the recorded calibration despite its REJECTED status.
+allow_rejected_calibration: true
+sam_python: /home/tanay/miniconda3/envs/sam3/bin/python
+model_path: /home/tanay/Documents/Hackathon/project-planner/models/sam3
+camera_serial: ''
+camera_settings: ''
+block_size:
+- 0.032
+- 0.016
+- 0.0096
+# Operator-confirmed measured support-plane height in fr3_link0.
+table_top_z: -0.02
+table_center:
+- 0.0
+- 0.0
+- -0.04
+# Assumed 2 m square centred on the robot, 40 mm thick; top is -20 mm.
+table_size:
+- 2.0
+- 2.0
+- 0.04
+workspace_x:
+- 0.2
+- 0.85
+workspace_y:
+- -0.5
+- 0.5
+max_hover_z: 0.55
+grasp_tcp_height: 0.012
+min_tcp_above_table: 0.01
+clearance: 0.1
+place_margin: 0.002
+inspect_height: 0.04
+open_width: 0.018
+grasp_width: 0.015
+min_open_clearance: 0.001
+finger_thickness: 0.004
+finger_length: 0.02
+tcp_correction_hand:
+- 0.0
+- 0.0
+# Do not inherit the previous setup's 3.7 mm bias with this calibration.
+# Zero is the preparation baseline; XYZ accuracy still needs physical checking.
+camera_height_bias: 0.0
+snap_heights: false
+layer_snap_tolerance: 0.003
+max_object_tilt_deg: 5.0
+top_layer_tolerance: 0.003
+grasp_force: 10.0
+gripper_speed: 0.02
+# Requested conservative speed scale (fraction of joint limits, not m/s).
+velocity_scale: 0.02
+acceleration_scale: 0.02
+# Extra conservative timing check for the hover demo (sampled segment averages).
+hover_tcp_segment_speed_m_s: 0.01
+max_joint_swing: 1.5
+max_wrist_swing: 2.2
+arrival_abort: 0.003
+arrival_angle_deg: 2.0
+feedback_max_age_s: 0.5
+stationary_window_s: 0.5
+stationary_joint_delta: 0.001
+observation_max_age_s: 120.0
+observation_pose:
+- 0.4
+- 0.0
+- 0.4
+- 0.0
+observe_attempts: 3
+snapshot_timeout_s: 110.0
+minimum_support_fraction: 0.25
+verification: operator
+verification_timeout_s: 120.0
+engage_studs: false
+mock_colours:
+- red
+- dark_red
+- dark_orange
+- medium_nougat
+- unknown
+replay_observations: []
+policy:
+  mode: single
+  colour: red
+  colours:
+  - red
+  - dark_red
+  - dark_orange
+  sequence:
+  - red
+  - dark_red
+  - dark_orange
+source:
+  origin:
+  - 0.37
+  - 0.0
+  - -0.02
+  rows: 6
+  columns: 5
+  layers: 10
+  yaw_deg: 90
+  brick_gap: 0.0
+  row_gap_studs: 2
+  stud_pitch: 0.008
+  layer_overrides: {}
+  stud_connected: true
+destinations:
+  selected:
+    origin:
+    - 0.65
+    - 0.0
+    - -0.02
+    rows: 6
+    columns: 5
+    layers: 10
+    yaw_deg: 90
+    brick_gap: 0.0
+    row_gap_studs: 2
+    stud_pitch: 0.008
+    layer_overrides: {}
+    stud_connected: true
+  discard:
+    origin:
+    - 0.46
+    - 0.32
+    - -0.02
+    rows: 1
+    columns: 1
+    layers: 1
+    yaw_deg: 0
+    brick_gap: 0.002
+    row_gap_studs: 2
+    stud_pitch: 0.008
+    layer_overrides: {}
+    kind: drop_box
+    capacity: 300
+    drop_centre_height: 0.12
+transfer_z: 0.25
+empty_plane_tolerance: 0.003
+max_brick_top_above_table: 0.12
+geometry_confirmed: false
+fixtures: []
+mock_step_delay_s: 0.0
+inspection_mode: false
+inspection_timeout_s: 120.0

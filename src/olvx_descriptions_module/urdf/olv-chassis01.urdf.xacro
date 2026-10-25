@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="olv-chassis01">
+  <!-- 
+    olv-chassis01 Macro
+    Parameters:
+    - namespace: give this chassis a name
+    - parent_link: Define which link the chassis is mounted to
+    - mounting_side: Specifies the mounting side of the chassis.
+      Acceptable values are: 'bottom', 'top'
+    - mounting_rotation: Specifies an additional rotation around the chassis's mounting frame's z-axis
+-->
+  <xacro:macro params="namespace:=olv_chassis01 parent_link mounting_side mounting_rotation"
+    name="olv-chassis01">
+    <link name="${namespace}_body_link">
+      <visual>
+        <geometry>
+          <mesh filename="package://olv_module_descriptions/meshes/olv-chassis01.dae" />
+        </geometry>
+      </visual>
+    </link>
+    
+    <link name="${namespace}_bottom_link" />
+    <!-- Additional links for installation points -->
+    <link name="${namespace}_fr_link"/>
+    <link name="${namespace}_fl_link"/>
+    <link name="${namespace}_br_link"/>
+    <link name="${namespace}_bl_link"/>
+
+    <!-- Check for unexpected value and print warning -->
+    <xacro:if
+      value="${mounting_side != 'bottom'}">
+      <xacro:warning>Unexpected value for mounting_side in olv-chassis01 macro. Accepted values are
+        'bottom'. Using default 'bottom'.</xacro:warning>
+      <xacro:property name="mounting_side" value="bottom" />
+    </xacro:if>
+
+    <!-- Conditional translations based on mount_frame -->
+    <xacro:if value="${mounting_side == 'bottom'}">
+      <xacro:property name="mount_translation" value="0 0 0.009" />
+      <xacro:property name="mount_rotation" value="0 0 ${mounting_rotation}" />
+    </xacro:if>
+    
+    <joint name="${namespace}_to_base_joint" type="fixed">
+  	<parent link="base_link"/>
+  	<child link="${namespace}_body_link"/>
+  	<origin xyz="0 0 0" rpy="0 0 0"/>
+   </joint>
+   
+   <joint name="${namespace}_to_bottom_joint" type="fixed">
+  	<parent link="base_link"/>
+  	<child link="${namespace}_bottom_link"/>
+  	<origin xyz="0 0 0" rpy="0 0 0"/>
+   </joint>
+   
+    <!-- Fixed joints for installation points -->
+    <!-- Replace 'x y z' with the actual coordinates of the FR installation point -->
+    <joint name="${namespace}_fr_joint" type="fixed">
+      <parent link="${namespace}_body_link"/>
+      <child link="${namespace}_fr_link"/>
+      <origin xyz="0.197 0.095 0" rpy="0 1.57 0"/>
+    </joint>
+
+    <!-- Replace 'x y z' with the actual coordinates of the FL installation point -->
+    <joint name="${namespace}_fl_joint" type="fixed">
+      <parent link="${namespace}_body_link"/>
+      <child link="${namespace}_fl_link"/>
+      <origin xyz="0.197 -0.087 0" rpy="0 1.57 0"/>
+    </joint>
+
+    <!-- Replace 'x y z' with the actual coordinates of the BR installation point -->
+    <joint name="${namespace}_br_joint" type="fixed">
+      <parent link="${namespace}_body_link"/>
+      <child link="${namespace}_br_link"/>
+      <origin xyz="-0.26 0.095 0" rpy="0 1.57 0"/>
+    </joint>
+
+    <!-- Replace 'x y z' with the actual coordinates of the BL installation point -->
+    <joint name="${namespace}_bl_joint" type="fixed">
+      <parent link="${namespace}_body_link"/>
+      <child link="${namespace}_bl_link"/>
+      <origin xyz="-0.26 -0.087 0" rpy="0 1.57 0"/>
+    </joint>
+  </xacro:macro>
+</robot>

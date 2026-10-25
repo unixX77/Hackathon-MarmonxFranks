@@ -1,0 +1,53 @@
+# ROS / colcon generated outputs
+build/
+install/
+log/
+
+# Generated observations, previews, recordings, logs, and robot state
+/runtime/
+
+# Python bytecode, packaging, and test/tool caches
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Local Python environments and download caches
+.venv/
+venv/
+env/
+.cache/
+
+# Downloaded model weights (keep configs, tokenizers, and licenses)
+/models/**/*.pt
+/models/**/*.pth
+/models/**/*.safetensors
+/models/**/pytorch_model*.bin
+/models/**/*.ckpt
+
+# Local environment variables and credentials
+.env
+.env.*
+!.env.example
+!.env.sample
+/.aws/
+
+# Local editor and assistant settings
+/.vscode/
+/.idea/
+/.agents/
+/.codex/
+*.swp
+*.swo
+*~
+
+# OS metadata
+.DS_Store
+Thumbs.db

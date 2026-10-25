@@ -1,0 +1,98 @@
+<?xml version="1.0"?>
+<robot xmlns:xacro="http://www.ros.org/wiki/xacro" name="olv-srv01-robot">
+  <!-- 
+    olv-srv01 Macro
+    Parameters:
+    - namespace: give this servo a name
+    - parent_link: Define which link the servo is mounted to
+    - mounting_side: Specifies the mounting side of the servo.
+      Acceptable values are: 'bottom', 'back', 'left', 'right'.
+    - mounting_rotation: Specifies an additional rotation around the servo's root frame during mounting
+-->
+  <xacro:macro params="namespace:=olv_srv01 parent_link mounting_side mounting_rotation" name="olv-srv01">
+
+    <link name="${namespace}_body_link">
+      <visual>
+        <geometry>
+          <mesh filename="package://olv_module_descriptions/meshes/olv-srv01-body.dae" />
+        </geometry>
+      </visual>
+      <collision>
+        <geometry>
+          <box size="0.06 0.06 0.046" />
+        </geometry>
+      </collision>
+    </link>
+
+    <link name="${namespace}_rotor_link">
+      <visual>
+        <geometry>
+          <mesh filename="package://olv_module_descriptions/meshes/olv-srv01-horn.dae" />
+        </geometry>
+      </visual>
+    </link>
+    <link name="${namespace}_bottom_link" />
+    <link name="${namespace}_right_link" />
+    <link name="${namespace}_left_link"/>
+    <link name="${namespace}_back_link"/>
+
+
+    <!-- Check for unexpected value and print warning -->
+    <xacro:if value="${mounting_side != 'bottom' and mounting_side != 'back' and mounting_side != 'left' and mounting_side != 'right'}">
+        <xacro:warning>Unexpected value for mounting_side in olv-srv01 macro. Accepted values are 'bottom', 'back', 'left', 'right'. Using default 'bottom'.</xacro:warning>
+        <xacro:property name="mounting_side" value="bottom"/>
+    </xacro:if>
+
+    <!-- Conditional translations based on mount_frame -->
+    <xacro:if value="${mounting_side == 'bottom'}">
+        <xacro:property name="mount_translation" value="0 0 0.023"/>
+        <xacro:property name="mount_rotation" value="0 0 ${mounting_rotation}"/>
+    </xacro:if>
+    <xacro:if value="${mounting_side == 'back'}">
+      <xacro:property name="mount_translation" value="0 0 0.03"/>
+      <xacro:property name="mount_rotation" value="0 -1.57079632679 ${mounting_rotation}"/>
+    </xacro:if>
+    <xacro:if value="${mounting_side == 'left'}">
+      <xacro:property name="mount_translation" value="0 0 0.03"/>
+      <xacro:property name="mount_rotation" value="1.57079632679 0 ${mounting_rotation}"/>
+    </xacro:if>
+    <xacro:if value="${mounting_side == 'right'}">
+      <xacro:property name="mount_translation" value="0 0 0.03"/>
+      <xacro:property name="mount_rotation" value="-1.57079632679 0 ${mounting_rotation}"/>
+    </xacro:if>
+
+    <joint name="${namespace}_base_joint" type="fixed">
+      <parent link="${parent_link}" />
+      <child link="${namespace}_body_link" />
+      <origin xyz="${mount_translation}" rpy="${mount_rotation}" />
+    </joint>
+
+    <joint name="${namespace}_joint" type="continuous">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_rotor_link" />
+      <origin xyz="0 0 0.023" rpy="0 0 0" />
+      <axis xyz="0 0 1" />
+    </joint>
+
+    <joint name="${namespace}_bottom_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_bottom_link" />
+      <origin xyz="0 0 -0.023" rpy="3.14159265359 0 -1.57079632679" />
+    </joint>
+    <joint name="${namespace}_right_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_right_link" />
+      <origin xyz="0 0.03 0" rpy="-1.57079632679 3.14159265359 0" />
+    </joint>
+    <joint name="${namespace}_left_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_left_link" />
+      <origin xyz="0 -0.03 0" rpy="1.57079632679 0 0" />
+    </joint>
+    <joint name="${namespace}_back_joint" type="fixed">
+      <parent link="${namespace}_body_link" />
+      <child link="${namespace}_back_link" />
+      <origin xyz="-0.03 0 0" rpy="1.57079632679 0 -1.57079632679" />
+    </joint>
+  </xacro:macro>
+</robot>

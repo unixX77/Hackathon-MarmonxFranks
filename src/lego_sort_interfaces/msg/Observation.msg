@@ -1,0 +1,10 @@
+string id
+builtin_interfaces/Time capture_stamp
+string camera_frame
+geometry_msgs/TransformStamped base_from_parent
+geometry_msgs/TransformStamped parent_from_camera
+uint64 motion_epoch
+lego_sort_interfaces/Brick[] bricks
+bool source_empty_verified
+string evidence
+string diagnostics_path

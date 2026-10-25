@@ -1,0 +1,14 @@
+string held_id
+string slot_id
+geometry_msgs/PoseStamped object_pose
+geometry_msgs/Vector3 dimensions
+bool engage_studs
+---
+bool success
+string outcome
+string detail
+string hand_state
+string held_id
+---
+string stage
+string hand_state

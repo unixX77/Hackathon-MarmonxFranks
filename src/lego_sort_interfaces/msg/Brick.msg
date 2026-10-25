@@ -1,0 +1,10 @@
+string observation_id
+string local_id
+geometry_msgs/PoseStamped top_face
+geometry_msgs/PoseStamped object_pose
+geometry_msgs/Vector3 dimensions
+string colour
+string quality
+string colour_confidence
+float64 colour_distance
+float64 colour_margin

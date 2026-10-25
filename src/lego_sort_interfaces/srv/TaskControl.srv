@@ -1,0 +1,5 @@
+string command
+string evidence
+---
+bool success
+string detail

@@ -1,0 +1,444 @@
+Changelog for package franka_ros2
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+v2.7.1 (2026-09-01)
+----------
+
+* fix: spine ``~/halt`` and ``move_absolute`` cancel did not stop the carriage.
+  ``halt_motion()`` posted to ``/spine/api/motion:halt``, which the device does
+  not implement (404). It now uses ``motion:quick-stop``, re-arms to
+  ``SwitchedOn`` after the DS402 stop, overlaps halt and feedback with the
+  blocking ``motion-mm:start`` on one HTTP client, and does not report a goal
+  canceled when halt fails.
+* fix: spine ``http_timeout`` (default 3 s) is only the connect timeout and the
+  budget for short REST. ``motion-mm:start`` uses ``(http_timeout, 600 s)`` so
+  a long move is not aborted by the short read; the motion lock stays held
+  until that POST returns.
+* refactor: spine REST wire strings live in ``SpineStatus`` (DS402 states) and
+  ``SpineMotion`` (``Finished``).
+* fix: ``move_absolute`` no longer surfaces HTTP 424 when the spine is not
+  ``SwitchedOn``. It checks state first and reports e.g.
+  ``Cannot start motion: spine is SwitchedOff (expected SwitchedOn)``.
+
+v2.7.0 (2026-08-14)
+----------
+
+* feat: add TMR battery ROS 2 support in ``franka_mobile`` (``sensor_msgs/BatteryState``
+  topic at 1 Hz and ``std_srvs/Trigger`` services for wireless charging), with an
+  internal ``franka_desk_api`` HTTPS helper used by the spine and battery clients.
+* fix: franka_hardware tests now run in isolated ROS domains to avoid possible collisions.
+* fix: fixed franka_hardware stop motion test to check for stopping_joint_positions matching the last 
+        commanded target instead of zero positions. 
+
+v2.6.0 (2026-08-10)
+-------------------
+Requires libfranka >= 0.20.4 and franka_description >= 2.8.1 requires ROS 2 Humble
+
+* fix: tune mobile teleop velocity/acceleration limits to stay within the RCU
+  2-norm bounds. Raise swerve translational limits to 0.35 m/s / 0.4 m/s^2 and
+  rotational to 0.5 rad/s / 0.3 rad/s^2 in ``controllers.yaml``, rescale the xbox
+  normal/turbo axes in ``xbox.config.yaml`` to match ``max_velocity``, and reduce
+  the joystick deadzone (0.1) with a higher autorepeat rate (50 Hz) in
+  ``mobile_teleop.launch.py`` for smoother teleop.
+* test: add a no-hardware integration test suite: a fake-hardware FR3
+  controller-lifecycle test, a Joy→cmd_vel teleop test, a launch-file parsing test,
+  a MoveIt planning smoke test with a gripper name-consistency check, and a single
+  GTest that loads every example controller. ``moveit.launch.py`` gains a
+  ``use_rviz`` argument so the smoke test can run headless. The CI test stage
+  now selects ``franka_bringup``, which the package filter had excluded, so its
+  tests are executed rather than only built.
+* fix: align MoveIt gripper controller name with actual gripper node name.
+  ``fr3_controllers.yaml`` and ``moveit.launch.py`` referenced ``fr3_gripper``
+  but the node is launched as ``franka_gripper``, breaking gripper action commands
+  and joint state aggregation in MoveIt. (GitHub PR #206)
+* fix: add missing dependencies in package.xml for isolated builds
+  (``rclcpp_components`` in franka_hardware; ``rclcpp_lifecycle``, ``urdf``,
+  ``eigen`` in franka_semantic_components). Fixes rosdep-based fresh-environment
+  builds. (community contribution: GitHub PRs #96, #169)
+* refactor: **BREAKING CHANGE** decouple the simulation backend (real/mock/gazebo) from the
+  franka_hardware ros2_control macros (``franka_arm`` and ``tmrv0_2``). The hardware
+  ``<plugin>`` block and the gz_ros2_control ``<gazebo>`` system element are now
+  injected by the owning package (``franka_bringup`` for real/mock,
+  ``franka_gazebo_bringup`` for gazebo) instead of being selected by ``xacro:if``
+  inside franka_hardware. Mode/interface selection moved to the entry-point URDFs as
+  capability flags (``include_effort_command``, ``include_finger_joint``,
+  ``include_passive_base``), replacing the former ``gazebo`` / ``gazebo_effort``
+  flags. URDF expansions remain behavior-equivalent.
+* fix: collapse five duplicate top-level ``/**:`` keys in franka_gazebo_bringup's
+  ``franka_gazebo_controllers.yaml`` into one. YAML last-key-wins was silently
+  dropping the controller_manager type declarations, blocking the tmr gazebo launch.
+
+v2.5.1 (2026-07-07)
+-------------------
+Requires libfranka >= 0.20.4 and franka_description >= 2.8.0 requires ROS 2 Humble
+
+* feat: add tmr launch file in franka bringup and use it for the mobile teleop launch file
+Requires libfranka >= 0.20.4 and franka_description >= 2.8.0 requires ROS 2 Humble
+
+* feat: franka_gazebo: add robot model, full ``franka::RobotState`` and estimated
+  external-wrench (tcp force/torque) state interfaces to the gz_ros2_control system
+  plugin, so model-based and force/torque controllers activate in simulation like on
+  hardware. The plugin is renamed ``franka_gazebo_hardware/FrankaGazeboHardwareInterface``.
+* fix: franka_hardware: set the gz_ros2_control plugin ``<ros><namespace>`` for the
+  mobile robot (tmrv0_2) so the controller_manager comes up in the ``/mobile_base``
+  namespace and controllers load in simulation instead of the launch hanging on
+  ``robot_state_publisher service not available``.
+* feat: franka_gazebo: the simulated external wrench is expressed in the stiffness frame K
+  (``K_F_ext_hat_K`` and the ``_tcp`` force/torque interfaces), while ``O_F_ext_hat_K``
+  stays in the base frame; the wrench sign follows the reaction convention (a push in +x
+  reads a measured external force of -x).
+* feat: franka_gazebo: export the 16 ``<i>/cartesian_pose_state`` state interfaces from the
+  gz_ros2_control system plugin, so Cartesian-pose controllers activate in simulation like
+  on hardware.
+
+v2.5.0 (2026-06-23)
+-------------------
+Requires libfranka >= 0.20.4 and franka_description >= 2.8.0 requires ROS 2 Humble
+
+* chore: split the gazebo sources into two packages, ``franka_gazebo_bringup``
+  (launch files, worlds, robot descriptions, controller configs) and
+  ``franka_gazebo_hardware`` (the gz_ros2_control gravity-compensation system plugin,
+  ``franka_gazebo_hardware/GazeboGravityCompensationSystem``). The public
+  ``ros2 launch franka_gazebo_bringup ...`` command is unchanged.
+* fix: franka_gazebo_bringup: fix launch file for gazebo (use world without gravity by default for example controllers)
+Requires libfranka >= 0.20.4 and franka_description >= 2.7.0 requires ROS 2 Humble
+Requires libfranka >= 0.20.4 and franka_description >= 2.8.0(?) requires ROS 2 Jazzy
+
+* feat: expose ``K_F_ext_hat_K`` as ``ForceTorqueSensor`` state interfaces (force.x/y/z,
+  torque.x/y/z) on the ``<arm_prefix><robot_type>_tcp`` sensor, enabling direct wrench
+  consumption at control frequency without a topic bridge.
+* BREAKING CHANGE: collision_detected topic now uses best_effort QoS (SensorDataQoS);
+  thread-safe atomics for collision state in example controllers.
+  Subscribers using the default ``reliable`` QoS will no longer receive messages.
+  To migrate, set the subscriber QoS to ``best_effort`` (``SensorDataQoS``):
+
+* feat: Added franka_spine packages (franka_spine_msgs, franka_spine_server, franka_spine_examples) — ROS 2 action/service server for controlling the Franka Spine module
+* docu: Added documentation for error recovery after an FCI error.
+* refactor: Removed the dead ``auto_declare<std::string>("robot_description", "")`` parameter from the joint position/velocity example controllers - the URDF is obtained from robot_state_publisher via the parameters client, so the declaration was unused.
+* chore: devcontainer container name now derives from the workspace folder basename (``<folder>_humble``) so variant clones no longer collide on a fixed container name.
+
+v2.4.0 (2026-05-04)
+-------------------
+Requires libfranka >= 0.20.4 and franka_description >= 2.7.0 requires ROS 2 Humble
+
+* breaking change: Switching franka_description common package both for humble and jazzy -> 2.7.0
+* chore: refactored cartesian velocity example controller to be gazebo independent by chaining `swerve_ik_controller`
+* feat: added a model-based gravity-compensation system plugin
+  (``franka_gazebo_bringup::GazeboGravityCompensationSystem``) for gz_ros2_control that
+  injects pinocchio-computed gravity torque on the effort-controlled arm joints, so the
+  zero-torque example controllers behave in Gazebo as on the real robot (where the master
+  controller performs gravity compensation) instead of collapsing under gravity.
+* chore: removed the per-link ``<gravity>false</gravity>`` xacro overrides; gravity is now
+  enabled globally in the Gazebo world. This is engine-independent (the previous approach
+  relied on a gz-fortress gravity-disable behavior that is not forwarded by some physics
+  engines). Simulation-only behavior change; no impact on real-robot users.
+* docu: Maintenance work on documentation
+* feat: Added `franka_mobile` package with `swerve_drive_controller` (tf and odom support) and `swerve_ik_controller` for gazebo sim.
+* refactor: replace blocking mutex in franka_robot_state_broadcaster with lock-free AsyncBuffer
+* BREAKING CHANGE: franka_robot_state_broadcaster convenience topics are published with best_effort QoS.
+  Topics affected: ``current_pose``, ``stiffness_frame_wrench``, and all other convenience topics
+  from the broadcaster. Subscribers using the default ``reliable`` QoS will no longer receive
+  messages. To migrate, set the subscriber QoS to ``best_effort``:
+
+  **C++ (rclcpp)**
+
+  .. code-block:: cpp
+
+     // Before (default reliable QoS — no longer receives messages):
+     auto sub = node->create_subscription<geometry_msgs::msg::PoseStamped>(
+         "current_pose", 10, callback);
+
+     // After (best_effort QoS):
+     rclcpp::QoS qos(10);
+     qos.best_effort();
+     auto sub = node->create_subscription<geometry_msgs::msg::PoseStamped>(
+         "current_pose", qos, callback);
+
+  **Python (rclpy)**
+
+  .. code-block:: python
+
+     # Before (default reliable QoS — no longer receives messages):
+     self.create_subscription(PoseStamped, 'current_pose', callback, 10)
+
+     # After (best_effort QoS):
+     from rclpy.qos import QoSProfile, ReliabilityPolicy
+     qos = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+     self.create_subscription(PoseStamped, 'current_pose', callback, qos)
+
+* fix: test fr3 urdf updated and segmentation fault errors from unit tests fixed
+* fix: make FrankaHardwareInterface error recoverable
+* refactor: FrankaHardwareInterface to use enums for the control mode
+* fix: ActionServers crashing when exception is not caught
+
+v2.3.0 (2026-03-10)
+-------------------
+Requires libfranka >= 0.20.4 and franka_description >= 1.6.1 requires ROS 2 Humble
+
+* feat: integration_launch_testing: added smoke tests for the example controllers
+* feat: franka_mobile_sensors: add visualization of sensors in rviz
+* feat: integration_launch_testing: test example controllers using example.launch.py
+* fix: gripper_example_controller also works without namespace
+* fix: corrected logs in franka_hardware
+* fix: gravity_compensation_example_controller, move_to_start_example_controller, joint_impedance_example_controller work with parametrized robot_type
+* fix: joint_impedance_with_ik_example_controller checked for 'robot_id' instead of 'robot_type' argument
+* fix: added missing dependency to rclcpp_action in franka_hardware package.xml
+* fix: franka_hardware test fixed
+* fix: franka_hardware test fixed
+* fix: rclpy.parameter_client.AsyncParameterClient replaced with custom version because the package is missing in humble
+* feat: update to libfranka 0.20.4
+* chore: cleanup franka_bringup launch utils import
+* feat: multi robot example for gazebo
+* fix: added arm_prefix functionality to all franka_example_controllers and franka_robot_state_broadcaster
+* feat: add sensor support for gazebo. Remove multi robot example for gazebo.
+* feat: support tmr simulation with sensors
+* chore: removed integration_launch_testing package, moved integration tests in their subpackage
+* feat: added unit tests for `franka_gazebo_bringup` launch files and cleanup.
+
+v2.2.0 (2026-01-14)
+----------
+Requires libfranka >= 0.19.0 and franka_description >= 1.2.0 requires ROS 2 Humble
+
+* Add: Added a joint-based point-to-point motion action with usage example
+* Remove: `olvx_description_module` dependency removed
+* BREAKING CHANGE: arm_id replaced by robot_type and controller_name by controller_names
+* Feat: TMRv0.2 teleoperation example controller added
+* Feat: arm_id replaced by robot_type
+* Feat: add franka_mobile_sensors as optional package for TMR robots
+
+v2.1.0 (2025-10-24)
+-------------------
+Requires libfranka >= 0.18.0 and franka_description >= 1.2.0 requires ROS 2 Humble
+
+* BREAKING CHANGE: only one move group called `(arm_id)_arm` is available. If Franka Hand is set, the TCP is placed as in the former `(arm_id)_manipulator`. Otherwise, its location corresponds to the one from the former `(arm_id)_arm`.
+* Refactor: ee_id and load_gripper arguments added in moveit launch file
+* Updated dependencies: libfranka to 0.18.0 and franka_description to 1.2.0
+
+v2.0.3 (2025-09-18)
+-------------------
+Requires libfranka >= 0.15.0 and franka_description >= 1.0.0 requires ROS 2 Humble
+
+* Refactor: Optimized the franka_robot_state_broadcaster to not block the RT loop of ros2_control
+* Docs: Add docs under each package
+
+v2.0.2 (2025-07-09)
+-------------------
+Requires libfranka >= 0.15.0 and franka_description >= 1.0.0 requires ROS 2 Humble
+
+* refactor: srdf files come from franka description
+* Fix: FrankaHardwareInterface: Fix eager claiming bug when multiple hardware components are present
+* Fix: joint_state_publisher uses correct topics to avoid rviz glitches
+
+v2.0.1 (2025-06-26)
+-------------------
+Requires libfranka >= 0.15.0 and franka_description >= 1.0.0 requires ROS 2 Humble
+
+* Fix: joint_impedance_with_ik_example_controller uses correct time from robot
+
+v2.0.0 (2025-06-10)
+-------------------
+Requires libfranka >= 0.15.0 and franka_description >= 0.5.0 requires ROS 2 Humble
+
+* BREAKING CHANGE: `franka.launch.py` is adapted to use namespaces
+* BREAKING CHANGE: the controller examples were removed to use a single launch script named `example.launch.py`, which can launch multiple robots and takes the arguments from a config file named `franka.config.yaml`
+* Fix: franka gripper works with namespaces
+* Add: `example.launch.py` - a single launch script to launch any number of namespaces
+* Feat: `franka.launch.py` can launch different robots in specific namespaces
+* Add: `franka.config.yaml` to configure the input arguments for multiple robots
+* Add: `controllers.yaml` controller file for namespace-agnostic launch of existing controllers
+
+
+v1.0.2 (2025-05-30)
+-------------------
+
+Requires libfranka >= 0.15.0 and franka_description >= 0.5.0 requires ROS 2 Humble
+
+* Fix: gripper example controller does not start any hardware interface
+
+
+v1.0.1 (2025-05-26)
+-------------------
+
+Requires libfranka >= 0.15.0 and franka_description >= 0.5.0 requires ROS 2 Humble
+
+* Fix: FrankaRobotStateBroadcaster Lock issue - add configurable timeout (see controllers.yaml)
+* Add: vcstool import for compatible libfranka and franka_description
+* Fix: Franka robot state broadcaster GitHub Issue #94 and #105
+* Test: Re-enable a test and provide Mock functions
+* Style: Adjust clang-tidy config due to changes in generate_parameter_library()
+* Chore: Eliminate annoying CMake configure time messages
+* Feat: Added prefix to single robot control
+* Doc: Added a link to the Gazebo README.md for better visibility
+* Breaking feat: Automatically spawn command interfaces depending on the configured ones coming from the URDF
+
+
+v1.0.0 (2025-01-22)
+-------------------
+
+Requires libfranka >= 0.15.0 and franka_description >= 0.3.0 requires ROS 2 Humble
+
+* feat: franka_example_controllers - Add a Franka Hand controller example (gripper_example_controller)
+* fix: reduced acceleration discontinuities by adding new robot_time state to franka_hardware that allows to update controllers with same time that robot uses
+* refactor: Improved Docker image for development with VSCode
+* BREAKING_CHANGE: initial_joint_position state removed from franka_hardware. rename/replace functions in franka_semantic_components as follows:
+
+  ::
+
+        -  initial_cartesian_pose, initial_elbow_state
+        +  cartesian_pose_state,   elbow_state.
+        - getInitialElbowConfiguration, getInitialOrientationAndTranslation, getInitialPoseMatrix
+        + getCurrentElbowConfiguration, getCurrentOrientationAndTranslation, getCurrentPoseMatrix
+
+
+0.1.15 (2024-06-21)
+----------------------
+
+Requires libfranka >= 0.13.2 and franka_description >= 0.3.0 requires ROS 2 Humble
+
+* feat:  franka_gazebo_bringup: Released and supports joint position, velocity and effort commands
+* feat:  franka_ign_ros2_control: ROS 2 hardware interface for gazebo controller. Modified to add gravity torques for Franka robots.
+* fix: the joint-impedance-with-IK example to work without a gripper
+
+0.1.14 (2024-05-13)
+----------------------
+
+Requires libfranka >= 0.13.2, and franka_description >= 0.2.0 requires ROS 2 Humble
+
+* BREAKING CHANGE: franka_description package
+* BREAKING CHANGE: using the franka_description standalone package https://github.com/frankarobotics/franka_description
+* build:  install pinocchio dependency from ros-humble-pinocchio apt package
+* feat: Added error recovery action to ROS 2 node
+* fix: hard-coded panda robot references
+* fix: franka_hardware prefixes the robot_state and robot model state interfaces with the read robot name from the urdf.
+
+0.1.13 (2024-01-18)
+----------------------
+
+Requires libfranka >= 0.13.2, requires ROS 2 Humble
+
+* BREAKING CHANGE: update libfranka dependency in devcontainer to 0.13.3(requires system image 5.5.0)
+* fix: devcontainer typo
+
+0.1.12 (2024-01-12)
+----------------------
+
+Requires libfranka >= 0.13.2, requires ROS 2 Humble
+
+* feat: franka_semantic_component: Read robot state from urdf robot description.
+* feat: franka_state_broadcaster: Publish visualizable topics seperately.
+
+0.1.11 (2023-12-20)
+----------------------
+
+Requires libfranka >= 0.13.2, requires ROS 2 Humble
+
+* feat: franka_example_controllers: Add a joint impedance example using OrocosKDL(LMA-ik) through MoveIt service.
+* feat: franka_hardware: Register initial joint positions and cartesian pose state interface without having running command interfaces.
+
+0.1.10 (2023-12-04)
+----------------------
+
+Requires libfranka >= 0.13.0, required ROS 2 Humble
+
+* feat: Adapted the franka robot state broadcaster to use ROS 2 message types
+* feat: Adapted the Cartesian velocity command interface to use Eigen types
+
+0.1.9 (2023-12-04)
+------------------
+
+Requires libfranka >= 0.13.0, required ROS 2 Humble
+
+* feat: franka_hardware: add state interfaces for initial position, cartesian pose and elbow.
+* feat: franka_hardware: support cartesian pose interface.
+* feat: franka_semantic_component: support cartesian pose interface.
+* feat: franka_example_controllers: add cartesian pose example controller
+* feat: franka_example_controllers: add cartesian elbow controller
+* feat: franka_example_controllers: add cartesian orientation controller
+
+0.1.8 (2023-11-16)
+------------------
+
+Requires libfranka >= 0.13.0, required ROS 2 Humble
+
+* test: franka_hardware: add unit tests for robot class.
+* fix:  joint_trajectory_controller: hotfix add joint patched old JTC back.
+
+0.1.7 (2023-11-10)
+------------------
+
+Requires libfranka >= 0.12.1, required ROS 2 Humble
+
+* feat: franka_hardware: joint position command interface supported
+* feat: franka_hardware: controller initializer automatically acknowledges error, if arm is in reflex mode
+* feat: franka_example_controllers: joint position example controller provided
+* fix:  franka_example_controllers: fix second start bug with the example controllers
+
+0.1.6 (2023-11-03)
+------------------
+
+Requires libfranka >= 0.12.1, required ROS 2 Humble
+
+* feat: franka_hardware: support for cartesian velocity command interface
+* feat: franka_semantic_component: implemented cartesian velocity interface
+* feat: franka_example_controllers: implement cartesian velocity example controller
+* feat: franka_example_controllers: implement elbow example controller
+
+0.1.5 (2023-10-13)
+------------------
+
+Requires libfranka >= 0.12.1, required ROS 2 Humble
+
+* feat: franka_hardware: support joint velocity command interface
+* feat: franka_example_controllers: implement joint velocity example controller
+* feat: franka_description: add velocity command interface to the control tag
+
+0.1.4 (2023-09-26)
+------------------
+
+Requires libfranka >= 0.12.1, required ROS 2 Humble
+
+* feat: franka_hardware: adapt to libfranka active control 0.12.1
+
+0.1.3 (2023-08-24)
+------------------
+
+Requires libfranka >= 0.11.0, required ROS 2 Humble
+
+* fix: franka_hardware: hotfix start controller when user claims the command interface
+
+0.1.2 (2023-08-21)
+------------------
+
+Requires libfranka >= 0.11.0, required ROS 2 Humble
+
+* feat: franka_hardware: implement non-realtime parameter services
+
+0.1.1 (2023-08-21)
+------------------
+
+Requires libfranka >= 0.11.0, required ROS 2 Humble
+
+* feat: franka_hardware: uses updated libfranka version providing the possibility to have the control loop on the ROS side
+
+0.1.0 (2023-07-28)
+------------------
+
+Requires libfranka >= 0.10.0, required ROS 2 Humble
+
+* feat: franka_bringup: franka_robot_state broadcaster added to franka.launch.py.
+* feat: franka_example_controllers: model printing read only controller implemented
+* feat: franka_robot_model: semantic component to access robot model parameters.
+* feat: franka_msgs: franka robot state msg added
+* feat: franka_robot_state: broadcaster publishes robot state.
+* feat: joint_effort_trajectory_controller package that contains a version of the\
+        joint_trajectory_controller that can use the torque interface. \
+        [See this PR](https://github.com/ros-controls/ros2_controllers/pull/225)
+* feat: franka_bringup package that contains various launch files to start controller examples or Moveit2.
+* feat: franka_moveit_config package that contains a minimal moveit config to control the robot.
+* feat: franka_example_controllers package that contains some example controllers to use.
+* feat: franka_hardware package that contains a plugin to access the robot.
+* feat: franka_msgs package that contains common message, service and action type definitions.
+* feat: franka_description package that contains all meshes and xacro files.
+* feat: franka_gripper package that offers action and service interfaces to use the Franka Hand gripper.
+* fix:  franka_hardware Fix the mismatched joint state interface type logger error message.
+* test: CI tests in Jenkins.
