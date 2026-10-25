@@ -314,3 +314,9 @@ class Mover:
             link_name=self.c['ee_frame'],
             object=CollisionObject(id='fr3_demo_block', operation=CollisionObject.REMOVE))]
         self.apply_scene(scene)
+        # Detaching hands the block back to the world as an ordinary obstacle, at the place pose and with no
+        # permission to touch the fingers. It is a real brick on the table now, 0.5 mm from the open fingers
+        # (open_width 17 mm), so it must not stay in the planning scene: the straight-up back-off would start
+        # "in collision" and MoveIt would refuse it (0 % of the path).
+        from spawn_scene import apply_scene
+        apply_scene(self.node, remove=('fr3_demo_block',), strict=False)

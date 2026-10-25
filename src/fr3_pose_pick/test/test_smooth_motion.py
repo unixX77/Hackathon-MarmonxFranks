@@ -4,6 +4,7 @@ import math
 from pathlib import Path
 
 import numpy as np
+import pytest
 from scipy.spatial.transform import Rotation
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -70,3 +71,21 @@ def test_wrist_excursion_is_the_largest_joint7_magnitude():
 def test_soft_wrist_limit_leaves_room_before_the_hard_stop_and_unwind_covers_a_half_turn():
     assert sm.WRIST_SOFT_LIMIT < 3.05 - 0.5          # FR3 joint 7 stops at +-3.0508 rad
     assert sm.UNWIND_WRIST_SWING > math.pi           # the equivalent yaw is 180 degrees away
+
+
+def test_releasing_the_block_also_removes_it_from_the_world(monkeypatch):
+    """Detaching puts the block back into the scene as an obstacle; with the hand open to 17 mm that obstacle
+    touches a finger and blocks the back-off. It must be removed right after the detach."""
+    pytest.importorskip('moveit_msgs')
+    import sys
+    sys.path.insert(0, str(ROOT / 'scripts'))
+    import spawn_scene
+    calls = []
+    monkeypatch.setattr(spawn_scene, 'apply_scene', lambda node, **kw: calls.append(('world', kw)))
+    mover = sm.Mover.__new__(sm.Mover)                        # no ROS node needed: only the scene calls are exercised
+    mover.node, mover.c = None, {'ee_frame': 'fr3_hand_tcp'}
+    mover.apply_scene = lambda scene: calls.append(('detach', scene))
+    mover.detach_block()
+    assert [name for name, _ in calls] == ['detach', 'world']                 # detach first, then clear the world copy
+    assert calls[1][1]['remove'] == ('fr3_demo_block',)
+    assert calls[1][1].get('strict') is False

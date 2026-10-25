@@ -332,7 +332,8 @@ class Mission:
         self.spin(0.5)
         err = self.mover.hand_pose()[:3, 3] - np.array(xyz)
         xy, z = math.hypot(err[0], err[1]), float(err[2])
-        self.say(f'  arrived: {xy * 1000:.1f} mm sideways, {z * 1000:+.1f} mm in height from the target')
+        self.say(f'  arrived: {xy * 1000:.1f} mm sideways (dx={err[0] * 1000:+.1f} dy={err[1] * 1000:+.1f}), '
+                 f'{z * 1000:+.1f} mm in height from the target')
         if max(xy, abs(z)) > self.c['arrival_abort']:
             raise RuntimeError(f'{label}: the hand is {max(xy, abs(z)) * 1000:.0f} mm from the target '
                                f'(limit {self.c["arrival_abort"] * 1000:.0f} mm); stopping')
