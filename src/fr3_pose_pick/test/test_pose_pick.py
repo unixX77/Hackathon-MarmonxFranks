@@ -156,7 +156,17 @@ def test_place_below_the_table_is_refused():
         pp.plan_place(CONFIG, 0.40, 0.0, 0.0, z=CONFIG['table_top_z'] - 0.01)
 
 
-def test_no_vision_left_in_the_pose_package():
-    source = (ROOT / 'scripts' / 'pose_pick.py').read_text()
-    for word in ('camera_xyz', 'calibration', 'sim_brick', 'sim_world', 'cv2'):
-        assert word not in source
+def test_no_detection_or_simulated_brick_in_the_pose_package():
+    # camera-frame NUMBERS may be typed in and converted, but nothing here looks at an image or a fake brick
+    for name in ('pose_pick.py', 'camera_frame.py'):
+        source = (ROOT / 'scripts' / name).read_text()
+        for word in ('cv2', 'sensor_msgs.msg import Image', 'cv_bridge', 'sim_brick', 'sim_world'):
+            assert word not in source
+
+
+def test_two_robot_stacks_in_one_domain_are_detected():
+    one_stack = ['move_group', 'controller_manager', 'robot_state_publisher', 'rviz2', 'sim_gripper']
+    assert pp.duplicate_stack_nodes(one_stack) == []
+    both = one_stack + ['move_group', 'controller_manager', 'robot_state_publisher']
+    assert pp.duplicate_stack_nodes(both) == ['controller_manager', 'move_group', 'robot_state_publisher']
+    assert pp.duplicate_stack_nodes(one_stack + ['move_group']) == ['move_group']

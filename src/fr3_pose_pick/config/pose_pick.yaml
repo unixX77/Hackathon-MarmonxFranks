@@ -44,6 +44,15 @@ arrival_warn: 0.003             # after each move: warn when the hand is further
 arrival_abort: 0.010            # ... and stop when it is further than this
 offsets_log: pose_pick_offsets.json   # every run's measured correction is appended here
 
+# ---- Camera-frame input (--camera-xyz): the hand-eye matrix -----------------------------
+camera_frame: camera_color_optical_frame
+# Hand-eye result (parent fr3_hand_tcp, child camera_color_optical_frame; T_ee_camera). It missed the
+# strict 5 mm / 1 deg worst-case gate (typical error about 3 mm / 0.9 deg over 15 views); using it is a
+# decision, recorded here. Path is relative to the repo root: run commands from there.
+calibration_file: data/calibration/charuco_result.json
+allow_rejected_calibration: true
+table_check_tolerance: 0.008    # refuse when the converted top face is further than this from the table model
+
 # ---- Base pad: the 2 cm spacer between the robot base and the table -----------------------
 # Footprint = the FR3 base (link0 collision mesh): 0.223 m long (x) by 0.188 m wide (y), so the
 # box centre is not at the base origin in x. Top face at z=0 (underside of the base), bottom

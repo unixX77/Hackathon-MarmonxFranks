@@ -27,6 +27,18 @@ Poses are in fr3_link0 (the robot base), metres; +x away from the robot, +y to i
   --place-yaw DEG      long-side angle of the placed brick (default: the angle it was picked at)
   --pose-is-tcp / --place-is-tcp   the given Z is the hand (TCP) height, not the brick centre
 
+or the same poses given in the CAMERA frame (camera_color_optical_frame: x right, y down, z forward):
+  --camera-xyz X Y Z          the point at the centre of the brick's TOP face, to pick
+  --camera-quat X Y Z W       its orientation (optional; else use --yaw). Only the direction of the
+                              long side (--camera-long-axis x|y, default x) on the table is used
+  --place-camera-xyz X Y Z    the same for where the brick should end up (top-face centre there)
+  --place-camera-quat X Y Z W
+  --ee-pose X Y Z QX QY QZ QW the hand (fr3_hand_tcp) pose in fr3_link0 when the picture was taken.
+                              Default: the arm's pose right now, so the arm must not have moved since.
+Conversion: p_base = T_base_hand @ T_hand_camera @ p_camera, with T_hand_camera from calibration_file
+(your hand-eye result). The converted top face must agree with the table model (table_check_tolerance)
+or it refuses (--use-measured-z: trust the measured height instead). Nothing is detected here.
+
 Correction commands at the inspection stop:
   x 0.002   y -0.001   yaw 5      any combination on one line; metres / degrees, small steps only
   ok = continue to lower and grasp      q = stop here (nothing is released or closed)
@@ -158,6 +170,16 @@ def apply_nudge(plan, dx, dy, dyaw_deg):
     return plan
 
 
+STACK_NODES = ('move_group', 'controller_manager', 'robot_state_publisher')
+
+
+def duplicate_stack_nodes(names):
+    """Core robot nodes that exist more than once in this ROS domain. That means two robot stacks (for
+    example a simulation next to the real robot) are sharing the domain, and a command could reach either."""
+    names = list(names)
+    return sorted(name for name in STACK_NODES if names.count(name) > 1)
+
+
 def task_config(c, plan):
     """The mapping smooth_motion.Mover and pick_place.validate expect."""
     cfg = {k: c[k] for k in ('block_size', 'table_center', 'table_size', 'clearance', 'velocity_scale',
@@ -168,6 +190,47 @@ def task_config(c, plan):
 
 
 # --------------------------------------------------------------------------- ROS part
+def lookup_hand(node, buffer, c, seconds=10.0):
+    """T_base_hand (4x4) from TF, i.e. the arm's forward kinematics right now."""
+    import rclpy
+    from rclpy.time import Time
+    from scipy.spatial.transform import Rotation
+    end = time.monotonic() + seconds
+    while not buffer.can_transform(c['base_frame'], c['ee_frame'], Time()):
+        if time.monotonic() > end:
+            raise RuntimeError('No hand pose from TF: is the robot (joint states) running?')
+        rclpy.spin_once(node, timeout_sec=0.1)
+    tf = buffer.lookup_transform(c['base_frame'], c['ee_frame'], Time()).transform
+    pose = np.eye(4)
+    pose[:3, :3] = Rotation.from_quat([tf.rotation.x, tf.rotation.y, tf.rotation.z, tf.rotation.w]).as_matrix()
+    pose[:3, 3] = [tf.translation.x, tf.translation.y, tf.translation.z]
+    return pose
+
+
+def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label):
+    """A top-face point (and optional orientation) in the camera frame -> (x, y, centre_z or None, yaw or None).
+    Prints what it did; raises ValueError when the converted height disagrees with the table model."""
+    from camera_frame import camera_point_to_base, camera_yaw_to_base, table_check
+    top = camera_point_to_base(t_base_hand, t_hand_cam, xyz)
+    err = table_check(c, top[2])
+    print(f'{label}: camera point {list(xyz)} -> base frame x={top[0]:.4f} y={top[1]:.4f} z={top[2]:.4f} '
+          f'(top face; table check {err * 1000:+.1f} mm)')
+    if abs(err) > c.get('table_check_tolerance', 0.008) and not use_measured_z:
+        raise ValueError(f'{label}: the top face is {err * 1000:+.1f} mm from where a brick on the table should be: '
+                         'the camera point, the arm posture it was taken from, or the calibration is wrong. '
+                         'Retake the point with the arm still, or use --use-measured-z if the brick is not '
+                         'on the table.')
+    yaw = None
+    if quat is not None:
+        yaw, tilt = camera_yaw_to_base(t_base_hand, t_hand_cam, quat, long_axis)
+        print(f'{label}: orientation -> long side at {math.degrees(yaw):.1f} deg from base X')
+        if tilt > 10:
+            print(f'WARNING: {label}: the brick long axis leans {tilt:.0f} deg out of the table plane; '
+                  'only its direction on the table is used.')
+    centre_z = float(top[2] - c['block_size'][2] / 2) if use_measured_z else None
+    return float(top[0]), float(top[1]), centre_z, yaw
+
+
 class Mission:
     def __init__(self, node, c, plan, buffer, inspect, given, place=None):
         from visualization_msgs.msg import Marker
@@ -331,14 +394,32 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--config', required=True)
-    parser.add_argument('--pose', nargs='+', type=float, metavar='V', required=True,
-                        help='X Y [Z] in metres, fr3_link0 (brick centre to pick; z optional)')
-    parser.add_argument('--place', nargs='+', type=float, metavar='V',
-                        help='X Y [Z] brick centre to put it down at (fr3_link0, metres; z optional)')
+    where = parser.add_mutually_exclusive_group(required=True)
+    where.add_argument('--pose', nargs='+', type=float, metavar='V',
+                       help='X Y [Z] in metres, fr3_link0 (brick centre to pick; z optional)')
+    where.add_argument('--camera-xyz', nargs=3, type=float, metavar=('X', 'Y', 'Z'),
+                       help='Top-face centre of the brick to pick, in camera_color_optical_frame (metres)')
+    put = parser.add_mutually_exclusive_group()
+    put.add_argument('--place', nargs='+', type=float, metavar='V',
+                     help='X Y [Z] brick centre to put it down at (fr3_link0, metres; z optional)')
+    put.add_argument('--place-camera-xyz', nargs=3, type=float, metavar=('X', 'Y', 'Z'),
+                     help='Top-face centre of the brick where it should end up, in camera_color_optical_frame')
+    parser.add_argument('--camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
+                        help='Orientation of the brick to pick in the camera frame (xyzw)')
+    parser.add_argument('--place-camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
+                        help='Orientation of the placed brick in the camera frame (xyzw)')
+    parser.add_argument('--camera-long-axis', choices=['x', 'y'], default='x',
+                        help="Which axis of the camera-frame brick orientation runs along its long side")
+    parser.add_argument('--ee-pose', nargs=7, type=float, metavar=('X', 'Y', 'Z', 'QX', 'QY', 'QZ', 'QW'),
+                        help='Hand (fr3_hand_tcp) pose in fr3_link0 when the camera picture was taken '
+                             '(default: the arm right now)')
+    parser.add_argument('--use-measured-z', action='store_true',
+                        help='With camera input: use the measured brick height instead of the table model')
+    parser.add_argument('--calibration', help='Hand-eye JSON (default: calibration_file in the config)')
     parser.add_argument('--place-yaw', type=float, metavar='DEG',
                         help='Long-axis angle of the placed brick (default: the angle it was picked at)')
     group = parser.add_mutually_exclusive_group()
-    group.add_argument('--yaw', type=float, default=0.0, metavar='DEG', help='Brick long-axis angle from base X')
+    group.add_argument('--yaw', type=float, metavar='DEG', help='Brick long-axis angle from base X (default 0)')
     group.add_argument('--quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
                        help='Orientation as xyzw quaternion in the base frame (only its yaw is used)')
     parser.add_argument('--pose-is-tcp', action='store_true', help='With --pose: Z is the hand (TCP) height at the grasp')
@@ -352,19 +433,31 @@ def main():
     args, ros_args = parser.parse_known_args()
     if args.step and args.no_step or args.inspect and args.no_inspect:
         raise ValueError('Choose either --step or --no-step, and either --inspect or --no-inspect')
-    if len(args.pose) not in (2, 3):
+    if args.pose is not None and len(args.pose) not in (2, 3):
         raise ValueError('--pose takes X Y or X Y Z')
     if args.place is not None and len(args.place) not in (2, 3):
         raise ValueError('--place takes X Y or X Y Z')
-    if (args.place_yaw is not None or args.place_is_tcp) and args.place is None:
-        raise ValueError('--place-yaw and --place-is-tcp need --place X Y [Z]')
+    if args.place_yaw is not None and args.place is None and args.place_camera_xyz is None:
+        raise ValueError('--place-yaw needs --place or --place-camera-xyz')
+    if args.place_is_tcp and args.place is None:
+        raise ValueError('--place-is-tcp needs --place X Y Z')
+    if args.pose_is_tcp and args.pose is None:
+        raise ValueError('--pose-is-tcp needs --pose X Y Z')
+    if args.camera_quat is not None and (args.camera_xyz is None or args.yaw is not None or args.quat):
+        raise ValueError('--camera-quat goes with --camera-xyz and replaces --yaw / --quat')
+    if args.place_camera_quat is not None and (args.place_camera_xyz is None or args.place_yaw is not None):
+        raise ValueError('--place-camera-quat goes with --place-camera-xyz and replaces --place-yaw')
+    camera_used = args.camera_xyz is not None or args.place_camera_xyz is not None
+    if args.ee_pose is not None and not camera_used:
+        raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
     c = yaml.safe_load(open(args.config, encoding='utf-8'))
+    yaw = None
     if args.quat:
         yaw, tilt = yaw_from_quaternion(args.quat)
         if tilt > 5:
             print(f'WARNING: the quaternion is tilted {tilt:.0f} deg; only its yaw is used '
                   '(the hand always comes straight down).')
-    else:
+    elif args.yaw is not None:
         yaw = wrap_line_angle(math.radians(args.yaw))
 
     import rclpy
@@ -372,17 +465,6 @@ def main():
     from tf2_ros import Buffer, TransformListener
     from pick_place import validate
     from smooth_motion import StepAbort
-    # Fail early, before ROS starts and before anything moves: a bad pose must not leave a brick in the hand.
-    place = None
-    if args.place is not None:
-        place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else None,
-                 'is_tcp': args.place_is_tcp,
-                 'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
-        validate(task_config(c, plan_place(c, *place['xy'], place['yaw'] or 0.0, place['z'], place['is_tcp'])))
-    z = args.pose[2] if len(args.pose) == 3 else None
-    plan = plan_pick(c, args.pose[0], args.pose[1], z, yaw, args.pose_is_tcp)
-    validate(task_config(c, plan))
-    given = {'pose': args.pose, 'yaw_deg': math.degrees(yaw)}
     exit_code = 0
     rclpy.init(args=ros_args)
     node = rclpy.create_node('pose_pick')
@@ -392,12 +474,61 @@ def main():
         end = time.monotonic() + 5.0                   # DDS discovery can take a few seconds: do not
         while time.monotonic() < end and 'sim_gripper' not in node.get_node_names():   # mistake a slow start for a real robot
             rclpy.spin_once(node, timeout_sec=0.1)
+        doubled = duplicate_stack_nodes(name for name, _ in node.get_node_names_and_namespaces())
+        if doubled:
+            raise RuntimeError(f'Two robot stacks are running in this ROS domain (more than one {", ".join(doubled)}): '
+                               'for example a simulation next to the real robot. A command could reach the wrong '
+                               'one. Stop one of them, then run again. Nothing was moved.')
         simulated = 'sim_gripper' in node.get_node_names()
         if simulated:
             c['velocity_scale'] = c['acceleration_scale'] = float(c.get('sim_speed_scale', 0.1))
             print('SIMULATION: sim_gripper found, using speed scale', c['velocity_scale'])
         else:
             print('REAL ROBOT.')
+
+        # ---- turn whatever was typed into pick / place plans. Nothing moves until the GO below.
+        t_base_hand = t_hand_cam = None
+        if camera_used:
+            from camera_frame import load_calibration, pose_matrix
+            calibration, t_hand_cam = load_calibration(args.calibration or c['calibration_file'], c,
+                                                       c.get('camera_frame', 'camera_color_optical_frame'))
+            print(f'Hand-eye: status {calibration["status"]}, typical error '
+                  f'{calibration["all_samples"]["translation_rms_m"] * 1000:.1f} mm / '
+                  f'{calibration["all_samples"]["rotation_rms_deg"]:.1f} deg')
+            if args.ee_pose is not None:
+                t_base_hand = pose_matrix(args.ee_pose[:3], args.ee_pose[3:])
+            else:
+                t_base_hand = lookup_hand(node, buffer, c)
+            p = t_base_hand[:3, 3]
+            print(f'Hand when the picture was taken ({"typed in" if args.ee_pose else "the arm right now"}): '
+                  f'x={p[0]:.4f} y={p[1]:.4f} z={p[2]:.4f}')
+        given = {}
+        if args.pose is not None:
+            z = args.pose[2] if len(args.pose) == 3 else None
+            plan = plan_pick(c, args.pose[0], args.pose[1], z, yaw or 0.0, args.pose_is_tcp)
+            given = {'pose': args.pose, 'yaw_deg': math.degrees(plan['yaw'])}
+        else:
+            x, y, centre_z, cam_yaw = resolve_camera_target(
+                c, t_base_hand, t_hand_cam, args.camera_xyz, args.camera_quat, args.camera_long_axis,
+                args.use_measured_z, 'Pick')
+            plan = plan_pick(c, x, y, centre_z, cam_yaw if cam_yaw is not None else (yaw or 0.0))
+            given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw'])}
+        validate(task_config(c, plan))
+        place = None
+        if args.place is not None:
+            place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else None,
+                     'is_tcp': args.place_is_tcp,
+                     'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
+        elif args.place_camera_xyz is not None:
+            x, y, centre_z, cam_yaw = resolve_camera_target(
+                c, t_base_hand, t_hand_cam, args.place_camera_xyz, args.place_camera_quat, args.camera_long_axis,
+                args.use_measured_z, 'Place')
+            place_yaw = cam_yaw if cam_yaw is not None else (
+                wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None)
+            place = {'xy': (x, y), 'z': centre_z, 'is_tcp': False, 'yaw': place_yaw}
+        if place is not None:                         # a bad place pose must not leave a brick in the hand
+            validate(task_config(c, plan_place(c, *place['xy'], place['yaw'] or 0.0, place['z'], place['is_tcp'])))
+
         inspect = args.inspect or (not simulated and not args.no_inspect)
         mission = Mission(node, c, plan, buffer, inspect, given, place)
         centre = plan['centre']

@@ -51,6 +51,34 @@ closes to `grasp_width`. RViz shows the pick pose as a green box and the place p
 carried brick appears in the planning scene while it is in the hand, so the arm avoids hitting the table
 with it. In simulation the proof of accuracy is the `arrived: ... mm` line after every move.
 
+## Poses given in the camera frame
+
+If the pose comes from a camera picture (`camera_color_optical_frame`: x right, y down, z forward), give it
+as the centre of the brick's **top face** and the robot converts it with your hand-eye matrix
+(`calibration_file` = `data/calibration/charuco_result.json`, `T_ee_camera`): `p_base = T_base_hand @
+T_hand_camera @ p_camera`. Nothing is detected: you type the numbers.
+
+```bash
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+     --camera-xyz 0.035 0.059 0.144 --camera-quat 0 0 0.26 0.97 \
+     --place-camera-xyz 0.24 -0.005 0.46 --ee-pose 0.314 0.0 0.406 1 0 0 0
+```
+- `--ee-pose X Y Z QX QY QZ QW` is where the hand (`fr3_hand_tcp`) was **when the picture was taken**.
+  Leave it out to use the arm's pose right now, which is only right if the arm has not moved since.
+- `--camera-quat` / `--place-camera-quat` give the brick orientation in the camera frame; only the
+  direction of its long side on the table is used (`--camera-long-axis x|y`). Or use `--yaw` / `--place-yaw`.
+- The converted top face must be where a brick on the table has it (within 8 mm) or it refuses;
+  `--use-measured-z` trusts the measured height instead (for a brick on something).
+- The hand-eye result missed its strict gate (typical error about 3 mm / 0.9 deg), so expect a few mm
+  of error from the conversion alone: use the inspection stop to correct it.
+
+## Safety: one robot stack per ROS domain
+
+A simulation and the real robot must never run in the same ROS domain (a command can reach either).
+`pose_pick.py` refuses to start when it sees two `move_group` / `controller_manager` /
+`robot_state_publisher` nodes. For a simulation next to the real robot use another domain
+(`export ROS_DOMAIN_ID=78` in every simulation terminal).
+
 ## Real robot
 
 1. FCI active, e-stop in reach, hand homed. Tell your teammates: the robot is shared.
