@@ -24,6 +24,9 @@ Poses are in fr3_link0 (the robot base), metres; +x away from the robot, +y to i
   --pose X Y [Z]       brick CENTRE to pick (Z left out = the brick rests on the table)
   --yaw DEG | --quat X Y Z W   brick long-side angle from base X (only the yaw of a quaternion is used)
   --place X Y [Z]      brick CENTRE to put it down (Z left out = on the table; give Z to stack)
+  --place-offset DX DY put it down this far from where it was picked (base frame, metres), e.g.
+                       0 0.05 = 5 cm to the robot's left. It follows any correction you make at the
+                       inspection stop. Height: on the table.
   --place-yaw DEG      long-side angle of the placed brick (default: the angle it was picked at)
   --pose-is-tcp / --place-is-tcp   the given Z is the hand (TCP) height, not the brick centre
 
@@ -133,6 +136,30 @@ def plan_place(c, x, y, yaw, z=None, pose_is_tcp=False):
         raise ValueError('place_margin must not be negative: it would push the brick into what it rests on')
     plan['release'] = [plan['grip'][0], plan['grip'][1], plan['grip'][2] + margin]
     return plan
+
+
+def resolve_place(c, pick_plan, place):
+    """The place plan for the pick as it stands now. A place given as an offset follows the pick position
+    (including any inspection correction, and on the table); a place yaw left out keeps the picked angle."""
+    yaw = place['yaw'] if place['yaw'] is not None else pick_plan['yaw']
+    if place.get('offset') is not None:
+        return plan_place(c, pick_plan['centre'][0] + place['offset'][0], pick_plan['centre'][1] + place['offset'][1], yaw)
+    return plan_place(c, *place['xy'], yaw, place['z'], place['is_tcp'])
+
+
+def check_offset_place(c, pick_plan, place):
+    """An offset place moves with the inspection correction, so it must stay valid for every correction the
+    operator may make (max_total_nudge). Refuse now, not later with the brick already in the hand."""
+    reach = float(c['max_total_nudge'])
+    for sx in (-reach, reach):
+        for sy in (-reach, reach):
+            shifted = dict(pick_plan, centre=[pick_plan['centre'][0] + sx, pick_plan['centre'][1] + sy,
+                                              pick_plan['centre'][2]])
+            try:
+                resolve_place(c, shifted, place)
+            except ValueError as problem:
+                raise ValueError(f'The place offset {list(place["offset"])} would leave the allowed area if the '
+                                 f'pick is corrected by up to {reach * 1000:.0f} mm: {problem}') from None
 
 
 def parse_nudge(text, max_step, max_yaw_step_deg):
@@ -270,8 +297,7 @@ class Mission:
 
     def place_plan(self):
         """The place pose; a place yaw left out means the brick keeps the angle it was picked at."""
-        yaw = self.place['yaw'] if self.place['yaw'] is not None else self.plan['yaw']
-        return plan_place(self.c, *self.place['xy'], yaw, self.place['z'], self.place['is_tcp'])
+        return resolve_place(self.c, self.plan, self.place)
 
     def spin(self, seconds):
         import rclpy
@@ -404,6 +430,8 @@ def main():
                      help='X Y [Z] brick centre to put it down at (fr3_link0, metres; z optional)')
     put.add_argument('--place-camera-xyz', nargs=3, type=float, metavar=('X', 'Y', 'Z'),
                      help='Top-face centre of the brick where it should end up, in camera_color_optical_frame')
+    put.add_argument('--place-offset', nargs=2, type=float, metavar=('DX', 'DY'),
+                     help='Put it down this far from the pick position (fr3_link0 axes, metres), e.g. 0 0.05')
     parser.add_argument('--camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
                         help='Orientation of the brick to pick in the camera frame (xyzw)')
     parser.add_argument('--place-camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
@@ -437,8 +465,11 @@ def main():
         raise ValueError('--pose takes X Y or X Y Z')
     if args.place is not None and len(args.place) not in (2, 3):
         raise ValueError('--place takes X Y or X Y Z')
-    if args.place_yaw is not None and args.place is None and args.place_camera_xyz is None:
-        raise ValueError('--place-yaw needs --place or --place-camera-xyz')
+    if args.place_yaw is not None and args.place is None and args.place_camera_xyz is None \
+            and args.place_offset is None:
+        raise ValueError('--place-yaw needs --place, --place-camera-xyz or --place-offset')
+    if args.place_offset is not None and max(abs(args.place_offset[0]), abs(args.place_offset[1])) > 0.5:
+        raise ValueError('--place-offset is in metres: 0.05 is 5 cm (more than 0.5 m is surely a typo)')
     if args.place_is_tcp and args.place is None:
         raise ValueError('--place-is-tcp needs --place X Y Z')
     if args.pose_is_tcp and args.pose is None:
@@ -526,8 +557,12 @@ def main():
             place_yaw = cam_yaw if cam_yaw is not None else (
                 wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None)
             place = {'xy': (x, y), 'z': centre_z, 'is_tcp': False, 'yaw': place_yaw}
+        elif args.place_offset is not None:
+            place = {'offset': tuple(args.place_offset), 'xy': None, 'z': None, 'is_tcp': False,
+                     'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
+            check_offset_place(c, plan, place)
         if place is not None:                         # a bad place pose must not leave a brick in the hand
-            validate(task_config(c, plan_place(c, *place['xy'], place['yaw'] or 0.0, place['z'], place['is_tcp'])))
+            validate(task_config(c, resolve_place(c, plan, place)))
 
         inspect = args.inspect or (not simulated and not args.no_inspect)
         mission = Mission(node, c, plan, buffer, inspect, given, place)

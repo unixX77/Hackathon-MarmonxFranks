@@ -170,3 +170,33 @@ def test_two_robot_stacks_in_one_domain_are_detected():
     both = one_stack + ['move_group', 'controller_manager', 'robot_state_publisher']
     assert pp.duplicate_stack_nodes(both) == ['controller_manager', 'move_group', 'robot_state_publisher']
     assert pp.duplicate_stack_nodes(one_stack + ['move_group']) == ['move_group']
+
+
+def test_place_offset_follows_the_pick_position():
+    pick = pp.plan_pick(CONFIG, 0.396, 0.036, yaw=math.radians(10))
+    place = {'offset': (0.0, 0.05), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None}
+    where = pp.resolve_place(CONFIG, pick, place)
+    assert where['centre'][:2] == pytest.approx([0.396, 0.086])
+    assert where['centre'][2] == pytest.approx(CONFIG['table_top_z'] + CONFIG['block_size'][2] / 2)   # on the table
+    assert where['yaw'] == pytest.approx(math.radians(10))                    # keeps the picked angle
+    pp.apply_nudge(pick, 0.004, -0.002, 5)                                    # inspection correction moves the place too
+    again = pp.resolve_place(CONFIG, pick, place)
+    assert again['centre'][:2] == pytest.approx([0.400, 0.084])
+    assert again['yaw'] == pytest.approx(math.radians(15))
+    assert pp.resolve_place(CONFIG, pick, dict(place, yaw=0.3))['yaw'] == pytest.approx(0.3)
+
+
+def test_absolute_place_is_unchanged_by_the_pick():
+    pick = pp.plan_pick(CONFIG, 0.40, 0.0)
+    place = {'offset': None, 'xy': (0.35, -0.2), 'z': None, 'is_tcp': False, 'yaw': math.radians(20)}
+    assert pp.resolve_place(CONFIG, pick, place)['centre'][:2] == pytest.approx([0.35, -0.2])
+
+
+def test_offset_place_is_refused_up_front_if_a_correction_could_push_it_out_of_the_workspace():
+    place = {'offset': (0.0, 0.05), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None}
+    pp.check_offset_place(CONFIG, pp.plan_pick(CONFIG, 0.396, 0.036), place)            # fine
+    edge = pp.plan_pick(CONFIG, 0.45, 0.25)       # place y=0.30 is still allowed, but not with a +30 mm correction
+    with pytest.raises(ValueError, match='corrected by up to'):
+        pp.check_offset_place(CONFIG, edge, place)
+    with pytest.raises(ValueError):
+        pp.check_offset_place(CONFIG, pp.plan_pick(CONFIG, 0.30, 0.0), {**place, 'offset': (-0.05, 0.0)})

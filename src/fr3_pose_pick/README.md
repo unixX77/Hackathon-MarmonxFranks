@@ -16,6 +16,7 @@ All in `fr3_link0` (the robot base), metres. +x is away from the robot, +y to it
 | `--pose X Y [Z]` | brick **centre** to pick. Z left out = the brick rests on the table |
 | `--yaw DEG` or `--quat X Y Z W` | angle of the brick's long side from base X (a quaternion: only its yaw is used) |
 | `--place X Y [Z]` | brick centre to put it down at. Z left out = on the table; give Z to stack |
+| `--place-offset DX DY` | put it down this far from where it was picked (base frame, metres): `0 0.05` = 5 cm to the robot's left. Follows any correction made at the inspection stop; on the table |
 | `--place-yaw DEG` | angle of the placed brick (default: the angle it was picked at) |
 | `--pose-is-tcp`, `--place-is-tcp` | the given Z is the hand (TCP) height, not the brick centre |
 
@@ -50,6 +51,17 @@ The simulated hand (`sim_gripper.py`) animates the fingers in RViz; there is no 
 closes to `grasp_width`. RViz shows the pick pose as a green box and the place pose as a blue box. The
 carried brick appears in the planning scene while it is in the hand, so the arm avoids hitting the table
 with it. In simulation the proof of accuracy is the `arrived: ... mm` line after every move.
+
+## Pick and place 5 cm away
+
+```bash
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+     --camera-xyz X Y Z --yaw 0 --place-offset 0 0.05
+```
+After the lift it carries the brick at hover height, lowers it until it rests on the table (2 mm margin),
+opens the hand and backs off straight up. `--place-offset 0.05 0` is 5 cm further from the robot,
+`0 -0.05` is 5 cm to its right. The offset is checked before anything moves, including for the largest
+correction you can make at the inspection stop (30 mm), so it never refuses with the brick in the hand.
 
 ## Poses given in the camera frame
 
