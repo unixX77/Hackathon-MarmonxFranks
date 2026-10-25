@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.8)
+project(fr3_pose_pick)
+find_package(ament_cmake REQUIRED)
+install(PROGRAMS scripts/smooth_motion.py scripts/pick_place.py scripts/spawn_scene.py scripts/sim_world.py scripts/sim_arm_controller.sh scripts/pose_pick.py scripts/pixel_to_base.py scripts/sim_truth.py DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(FILES README.md DESTINATION share/${PROJECT_NAME})
+ament_package()

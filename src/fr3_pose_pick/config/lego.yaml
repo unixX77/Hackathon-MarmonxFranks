@@ -1,0 +1,84 @@
+# Autonomous Lego pick-and-place. All lengths in metres, in fr3_link0 (robot base).
+base_frame: fr3_link0
+ee_frame: fr3_hand_tcp
+camera_frame: camera_color_optical_frame
+image_topic: /camera/camera/color/image_raw
+camera_info_topic: /camera/camera/color/camera_info
+
+# Hand-eye result used to place the camera on the hand. This one did not pass the strict
+# 5 mm / 1 deg worst-case gate (typical error about 3 mm / 0.9 deg); using it is a decision.
+calibration_file: data/calibration/charuco_result.json   # relative to the repo root: run commands from there
+allow_rejected_calibration: true
+
+# ---- Brick (CHECK THESE against your real brick) ---------------------------------------
+# [long side, short side, height] excluding studs. A 2x4 brick is 0.032 x 0.016 x 0.0096.
+# The jaws close across the SHORT side.
+block_size: [0.032, 0.016, 0.0096]
+size_tolerance: 0.45          # accept measured sizes within +-45 % of block_size
+min_area_px: 400
+# HSV ranges (OpenCV: H 0-179). Red wraps around 0, so it needs two ranges.
+hsv_ranges:
+  - [[0, 110, 60], [10, 255, 255]]
+  - [[170, 110, 60], [179, 255, 255]]
+
+# ---- Table ------------------------------------------------------------------------------
+# Robot base sits 2 cm above the table surface, so the surface is at z = -0.02 in fr3_link0.
+table_top_z: -0.02
+# Table box: big, with the robot base standing on it. The top surface is at table_top_z
+# (the base sits on a 2 cm bracket above it) and the box is 0.06 m thick, so the centre is
+# table_top_z - thickness/2. Size is [x length, y width, thickness]. This spans
+# x -0.45..1.15 m and y -0.60..0.60 m, so the base at x=0, y=0 is on the table with room behind it.
+table_center: [0.35, 0.0, -0.05]
+table_size: [1.60, 1.20, 0.06]
+# Only bricks inside this window are accepted (keeps the red e-stop, cables, etc. out).
+workspace_x: [0.25, 0.60]
+workspace_y: [-0.30, 0.30]
+
+# ---- Grasp ------------------------------------------------------------------------------
+# TCP height above the table at the grasp. The fingertip ends are ~9 mm below the TCP, so a
+# TCP lower than ~10 mm would put them in the table.
+grasp_tcp_height: 0.012
+clearance: 0.10                 # height above the grasp for approach/lift moves
+grasp_width: 0.015              # total jaw opening when closed on the brick (short side)
+open_width: 0.08
+grasp_force: 10.0
+gripper_speed: 0.02
+velocity_scale: 0.05
+acceleration_scale: 0.05
+place_yaw: 0.0
+# place_xy: [0.45, -0.20]       # or pass --place-xy X Y on the command line
+
+# ---- Simulation -------------------------------------------------------------------------
+# Default pose of the virtual brick that spawn_scene.py / the launch file puts in the scene.
+sim_brick_xy: [0.45, 0.10]
+sim_brick_yaw_deg: 20.0
+
+# ---- Autonomous run (lego_auto.py) -------------------------------------------------------
+# TCP positions in fr3_link0 (hand pointing down) from which the camera looks for the brick.
+scan_poses:
+  - [0.40, 0.00, 0.45]
+  - [0.40, 0.20, 0.45]
+  - [0.40, -0.20, 0.45]
+  - [0.52, 0.00, 0.48]
+servo_heights: [0.30, 0.16]     # TCP height above the grasp height at each camera refinement step
+servo_tolerance: 0.004          # stop refining when the estimate moves less than this (m)
+servo_max_moves: 3              # at most this many re-aims per height
+settle_seconds: 1.0             # wait after each move before trusting the camera
+watch_seconds: 2.0              # how long the camera processes frames at each stop
+
+# Simulation only (sim_world.py): the simulated camera is deliberately NOT where the
+# calibration says it is, so you can see the camera refinement correct for it.
+sim_cal_error:
+  translation_mm: [4.0, -3.0, 2.0]
+  rotation_deg: [0.6, -0.5, 0.7]
+sim_speed_scale: 0.1            # fake hardware only; real runs keep velocity_scale
+sim_brick_random: true          # brick at a random place/angle that only sim_world knows
+sim_decoys: true                # a red object of the wrong size and a blue brick, to be ignored
+# sim_seed: 5                   # uncomment for a repeatable 'random' layout
+
+# ---- Base pad: the 2 cm spacer between the robot base and the table -----------------------
+# Footprint = the FR3 base (link0 collision mesh): 0.223 m long (x) by 0.188 m wide (y), so the
+# box centre is not at the base origin in x. Top face at z=0 (underside of the base), bottom
+# face at z=-0.02 = table_top_z. Delete both lines to remove it.
+base_pad_size: [0.223, 0.188, 0.020]
+base_pad_center: [-0.0414, 0.0, -0.010]

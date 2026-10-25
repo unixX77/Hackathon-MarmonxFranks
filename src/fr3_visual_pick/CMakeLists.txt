@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.8)
+project(fr3_visual_pick)
+find_package(ament_cmake REQUIRED)
+install(PROGRAMS scripts/smooth_motion.py scripts/pick_place.py scripts/spawn_scene.py scripts/sim_world.py scripts/sim_arm_controller.sh scripts/lego_auto.py scripts/lego_pick_place.py scripts/image_quality.py scripts/handeye_calibrate.py DESTINATION lib/${PROJECT_NAME})
+install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
+install(FILES README.md HANDEYE.md DESTINATION share/${PROJECT_NAME})
+ament_package()

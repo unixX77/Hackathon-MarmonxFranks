@@ -5,7 +5,9 @@ main workspace: build, simulate and run everything from the repo root.
 
 | Path | Contents |
 |---|---|
-| `src/fr3_pick_place/` | Pose-driven pick (`pose_pick.py`), click-to-pose helper (`pixel_to_base.py`), straight-line motion, hand-eye tools, earlier camera-based Lego pipeline |
+| `src/fr3_pose_pick/` | **Pose-based** pick and place, no vision: `pose_pick.py` (`--pose`, `--place`), `pixel_to_base.py`, `sim_truth.py`. Self-contained copy: change it freely |
+| `src/fr3_visual_pick/` | **Camera-based** pick and place: `lego_auto.py`, `lego_pick_place.py`, hand-eye tools and notes. Self-contained copy: change it freely |
+| `src/fr3_pick_place/` | The original combined package (kept unchanged; the two above were copied from it) |
 | `src/franka_ros2`, `src/libfranka`, `src/franka_description` | Franka dependencies (nested repos) |
 | `franka-handeye/` | Standalone hand-eye calibration app (nested repo) |
 | `data/calibration/` | Hand-eye / ChArUco samples and results. `charuco_result.json` is the one used for picking |
@@ -44,3 +46,15 @@ terminal 2 drops `--yes`. Details, the correction commands and the safety limits
 `src/fr3_pick_place/README.md`.
 
 Tests: `python3 -I -m pytest -q src/fr3_pick_place/test`
+
+## Two separate pipelines (copies, so you can experiment in each)
+
+`fr3_pose_pick` and `fr3_visual_pick` each carry their own copy of the shared code (`smooth_motion.py`,
+`pick_place.py`, `spawn_scene.py`, `sim_world.py`, `sim_arm_controller.sh`, the launch file and sim
+configs). Editing one never affects the other. Build them with `./build.sh`, then replace the package name:
+```bash
+ros2 launch fr3_pose_pick lego_bringup.launch.py use_fake_hardware:=true sim_world:=true spawn_brick:=false
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml --pose X Y --yaw DEG --place 0.40 -0.20 --yes
+ros2 run fr3_visual_pick lego_auto.py --config src/fr3_visual_pick/config/lego.yaml --place-xy 0.45 -0.20 --yes
+```
+Run only one stack at a time (they use the same topics and node names).

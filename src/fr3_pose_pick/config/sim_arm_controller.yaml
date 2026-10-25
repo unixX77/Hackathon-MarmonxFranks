@@ -1,0 +1,10 @@
+# SIMULATION ONLY: the stock fr3_arm_controller commands joint effort, which the fake hardware
+# cannot follow. This version commands joint position so the simulated arm really moves.
+fr3_arm_controller:
+  ros__parameters:
+    command_interfaces:
+      - position
+    state_interfaces:
+      - position
+      - velocity
+    joints: [fr3_joint1, fr3_joint2, fr3_joint3, fr3_joint4, fr3_joint5, fr3_joint6, fr3_joint7]
