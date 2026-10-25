@@ -5,4 +5,4 @@ source /opt/ros/humble/setup.bash
 source "$(dirname "${BASH_SOURCE[0]}")/install/setup.bash"
 export ROS_LOCALHOST_ONLY=1 ROS_DOMAIN_ID=77
 cd "$(dirname "${BASH_SOURCE[0]}")"
-echo "ready: $(pwd)  ROS_DOMAIN_ID=$ROS_DOMAIN_ID  fr3_pick_place -> $(ros2 pkg prefix fr3_pick_place)"
+echo "ready: $(pwd)  ROS_DOMAIN_ID=$ROS_DOMAIN_ID  fr3_pose_pick -> $(ros2 pkg prefix fr3_pose_pick)"
