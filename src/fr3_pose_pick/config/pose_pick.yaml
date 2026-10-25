@@ -23,7 +23,7 @@ max_hover_z: 0.55               # highest the hand may go while hovering above t
 grasp_tcp_height: 0.012
 min_tcp_above_table: 0.010
 clearance: 0.10                 # hover / lift height above the grasp
-place_margin: 0.002             # --place: the hand stops this far above the brick-on-table height before letting go
+place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
 grasp_width: 0.015              # total jaw opening when closed on the brick (short side)
 open_width: 0.08
 grasp_force: 10.0
@@ -42,20 +42,7 @@ max_nudge_yaw_step_deg: 15      # ... or 15 degrees
 max_total_nudge: 0.030          # total x/y correction allowed per run (m)
 arrival_warn: 0.003             # after each move: warn when the hand is further than this from the target
 arrival_abort: 0.010            # ... and stop when it is further than this
-sim_check_xy_tol: 0.001         # simulation: the placed brick must end within this of the place pose (m) ...
-sim_check_yaw_tol_deg: 1.0      # ... and this many degrees
 offsets_log: pose_pick_offsets.json   # every run's measured correction is appended here
-
-# ---- pixel_to_base.py (camera + hand-eye -> brick pose in the base frame) ----------------
-camera_frame: camera_color_optical_frame
-image_topic: /camera/camera/color/image_raw
-depth_topic: /camera/camera/aligned_depth_to_color/image_raw     # needs align_depth.enable:=true
-camera_info_topic: /camera/camera/color/camera_info
-# Hand-eye result (parent fr3_hand_tcp, child camera_color_optical_frame). It missed the strict
-# 5 mm / 1 deg worst-case gate (typical error about 3 mm / 0.9 deg); using it is a decision.
-calibration_file: data/calibration/charuco_result.json   # relative to the repo root: run commands from there
-allow_rejected_calibration: true
-table_check_tolerance: 0.008    # warn when the brick's top face is further than this from the table model
 
 # ---- Base pad: the 2 cm spacer between the robot base and the table -----------------------
 # Footprint = the FR3 base (link0 collision mesh): 0.223 m long (x) by 0.188 m wide (y), so the

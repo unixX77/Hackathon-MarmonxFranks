@@ -108,26 +108,8 @@ def test_hand_tilt():
     assert pp.hand_tilt_deg(Rotation.identity().as_matrix()) == pytest.approx(180)      # pointing up
 
 
-def test_camera_point_uses_the_full_chain():
-    import numpy as np
-    found = [p for p in (ROOT.parents[1] / 'charuco_result.json',
-                         ROOT.parents[1] / 'data' / 'calibration' / 'charuco_result.json') if p.exists()]
-    if not found:
-        pytest.skip('charuco_result.json not found')
-    t_ee_cam = np.array(json.load(open(found[0]))['T_ee_camera'])
-    from scipy.spatial.transform import Rotation
-    hand = np.eye(4)
-    hand[:3, :3] = (Rotation.from_euler('xy', [10, -6], degrees=True) * Rotation.from_euler('x', math.pi)).as_matrix()
-    hand[:3, 3] = [0.40, 0.02, 0.45]
-    p_cam = [0.01, -0.02, 0.43]
-    expected = (hand @ t_ee_cam @ np.array(p_cam + [1.0]))[:3]
-    assert pp.camera_point_to_base(hand, t_ee_cam, p_cam) == pytest.approx(expected)
-    assert np.linalg.norm(pp.camera_point_to_base(hand, np.eye(4), p_cam) - expected) > 0.03   # calibration matters
-
-
-@pytest.mark.parametrize('name', ['pose_pick.yaml', 'lego.yaml'])
-def test_base_pad_sits_between_robot_base_and_table(name):
-    c = yaml.safe_load(open(ROOT / 'config' / name, encoding='utf-8'))
+def test_base_pad_sits_between_robot_base_and_table():
+    c = CONFIG
     size, centre = c['base_pad_size'], c['base_pad_center']
     assert size[2] == pytest.approx(0.02)                                   # 2 cm tall
     assert centre[2] + size[2] / 2 == pytest.approx(0.0)                    # top face = underside of the base
@@ -154,7 +136,27 @@ def test_place_pose_gets_the_same_checks_as_a_pick():
         pp.plan_place(dict(CONFIG, place_margin=-0.001), 0.40, 0.0, 0.0)
 
 
-def test_yaw_error_is_symmetric_and_ignores_180_degree_flips():
-    assert pp.yaw_error_deg(math.radians(10), math.radians(12)) == pytest.approx(2.0)
-    assert pp.yaw_error_deg(math.radians(89), math.radians(-89)) == pytest.approx(2.0)
-    assert pp.yaw_error_deg(math.radians(30), math.radians(210)) == pytest.approx(0.0, abs=1e-9)
+def test_place_at_a_given_height_for_stacking():
+    one_brick_up = CONFIG['table_top_z'] + CONFIG['block_size'][2] * 1.5
+    plan = pp.plan_place(CONFIG, 0.40, 0.0, 0.0, z=one_brick_up)
+    assert plan['centre'][2] == pytest.approx(one_brick_up)
+    low = pp.plan_place(CONFIG, 0.40, 0.0, 0.0)
+    assert plan['release'][2] - low['release'][2] == pytest.approx(CONFIG['block_size'][2])
+
+
+def test_place_height_can_be_the_hand_height():
+    by_tcp = pp.plan_place(CONFIG, 0.40, 0.0, 0.0, z=0.05, pose_is_tcp=True)
+    assert by_tcp['grip'][2] == pytest.approx(0.05)
+    with pytest.raises(ValueError, match='needs a z'):
+        pp.plan_place(CONFIG, 0.40, 0.0, 0.0, pose_is_tcp=True)
+
+
+def test_place_below_the_table_is_refused():
+    with pytest.raises(ValueError, match='below the table'):
+        pp.plan_place(CONFIG, 0.40, 0.0, 0.0, z=CONFIG['table_top_z'] - 0.01)
+
+
+def test_no_vision_left_in_the_pose_package():
+    source = (ROOT / 'scripts' / 'pose_pick.py').read_text()
+    for word in ('camera_xyz', 'calibration', 'sim_brick', 'sim_world', 'cv2'):
+        assert word not in source
