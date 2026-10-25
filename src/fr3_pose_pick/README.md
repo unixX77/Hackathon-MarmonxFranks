@@ -80,6 +80,18 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
 - `--camera-quat` / `--place-camera-quat` give the brick orientation in the camera frame; only the
   direction of its long side on the table is used (`--camera-long-axis x|y`). Or use `--yaw` / `--place-yaw`.
 - The height of the brick is worked out automatically (see the next section): you do not give a layer count.
+- **Brick angle from the image:** `--camera-angle DEG` (and `--place-camera-angle DEG`) takes the angle of the
+  brick's long side **in the image**, which is what a segmentation mask gives: degrees from the image's right
+  (+x) toward the image's down (+y), i.e. clockwise on the screen, any value (a line repeats every 180 degrees).
+  It replaces `--yaw` / `--camera-quat`. Only the direction on the table is used, and the camera's mounting
+  rotation and the hand yaw at the time of the picture are taken from the hand-eye result and the arm pose.
+  With the hand pointing down at yaw 0: a long side vertical in the image is a brick along base x (yaw 0),
+  and 80 degrees (10 degrees clockwise from vertical on the screen) is a brick turned +10 degrees.
+
+```bash
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+     --camera-xyz 0.035240 0.005403 0.318830 --camera-angle 80 --place-offset 0 0.07
+```
 - The hand-eye result missed its strict gate (typical error about 3 mm / 0.9 deg), so expect a few mm
   of error from the conversion alone: use the inspection stop to correct it.
 

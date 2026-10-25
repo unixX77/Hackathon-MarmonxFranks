@@ -42,8 +42,11 @@ or the same poses given in the CAMERA frame (camera_color_optical_frame: x right
   --camera-xyz X Y Z          the point at the centre of the brick's TOP face, to pick
   --camera-quat X Y Z W       its orientation (optional; else use --yaw). Only the direction of the
                               long side (--camera-long-axis x|y, default x) on the table is used
+  --camera-angle DEG          or just the angle of the brick's long side IN THE IMAGE (degrees, from the image
+                              right toward the image down, i.e. clockwise on the screen): what a segmentation
+                              mask gives. Replaces --camera-quat and --yaw
   --place-camera-xyz X Y Z    the same for where the brick should end up (top-face centre there)
-  --place-camera-quat X Y Z W
+  --place-camera-quat X Y Z W / --place-camera-angle DEG
   --ee-pose X Y Z QX QY QZ QW the hand (fr3_hand_tcp) pose in fr3_link0 when the picture was taken.
                               Default: the arm's pose right now, so the arm must not have moved since.
 Conversion: p_base = T_base_hand @ T_hand_camera @ p_camera, with T_hand_camera from calibration_file
@@ -561,6 +564,11 @@ def main():
                         help='Orientation of the brick to pick in the camera frame (xyzw)')
     parser.add_argument('--place-camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
                         help='Orientation of the placed brick in the camera frame (xyzw)')
+    parser.add_argument('--camera-angle', type=float, metavar='DEG',
+                        help="Angle of the brick's long side in the image (degrees, from image right toward image "
+                             "down, i.e. clockwise on the screen), instead of --camera-quat / --yaw")
+    parser.add_argument('--place-camera-angle', type=float, metavar='DEG',
+                        help="Same, for the placed brick (instead of --place-camera-quat / --place-yaw)")
     parser.add_argument('--camera-long-axis', choices=['x', 'y'], default='x',
                         help="Which axis of the camera-frame brick orientation runs along its long side")
     parser.add_argument('--ee-pose', nargs=7, type=float, metavar=('X', 'Y', 'Z', 'QX', 'QY', 'QZ', 'QW'),
@@ -608,6 +616,12 @@ def main():
         raise ValueError('--camera-quat goes with --camera-xyz and replaces --yaw / --quat')
     if args.place_camera_quat is not None and (args.place_camera_xyz is None or args.place_yaw is not None):
         raise ValueError('--place-camera-quat goes with --place-camera-xyz and replaces --place-yaw')
+    if args.camera_angle is not None and (args.camera_xyz is None or args.camera_quat is not None
+                                          or args.yaw is not None or args.quat):
+        raise ValueError('--camera-angle goes with --camera-xyz and replaces --camera-quat / --yaw / --quat')
+    if args.place_camera_angle is not None and (args.place_camera_xyz is None or args.place_camera_quat is not None
+                                                or args.place_yaw is not None):
+        raise ValueError('--place-camera-angle goes with --place-camera-xyz and replaces --place-camera-quat / --place-yaw')
     camera_used = args.camera_xyz is not None or args.place_camera_xyz is not None
     if args.ee_pose is not None and not camera_used:
         raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
@@ -679,6 +693,14 @@ def main():
             p = t_base_hand[:3, 3]
             print(f'Hand when the picture was taken ({"typed in" if args.ee_pose else "the arm right now"}): '
                   f'x={p[0]:.4f} y={p[1]:.4f} z={p[2]:.4f}')
+        pick_quat, pick_axis = args.camera_quat, args.camera_long_axis
+        place_quat, place_axis = args.place_camera_quat, args.camera_long_axis
+        if args.camera_angle is not None or args.place_camera_angle is not None:
+            from camera_frame import image_angle_to_quat
+            if args.camera_angle is not None:
+                pick_quat, pick_axis = image_angle_to_quat(args.camera_angle), 'x'
+            if args.place_camera_angle is not None:
+                place_quat, place_axis = image_angle_to_quat(args.place_camera_angle), 'x'
         given = {}
         if args.pose is not None:
             z = args.pose[2] if len(args.pose) == 3 else (
@@ -688,7 +710,7 @@ def main():
         else:
             height_info = {}
             x, y, centre_z, cam_yaw = resolve_camera_target(
-                c, t_base_hand, t_hand_cam, args.camera_xyz, args.camera_quat, args.camera_long_axis,
+                c, t_base_hand, t_hand_cam, args.camera_xyz, pick_quat, pick_axis,
                 args.use_measured_z, 'Pick', args.layers, height_info)
             plan = plan_pick(c, x, y, centre_z, cam_yaw if cam_yaw is not None else (yaw or 0.0))
             given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw']),
@@ -702,7 +724,7 @@ def main():
                      'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
         elif args.place_camera_xyz is not None:
             x, y, centre_z, cam_yaw = resolve_camera_target(
-                c, t_base_hand, t_hand_cam, args.place_camera_xyz, args.place_camera_quat, args.camera_long_axis,
+                c, t_base_hand, t_hand_cam, args.place_camera_xyz, place_quat, place_axis,
                 args.use_measured_z, 'Place', args.place_layers)
             place_yaw = cam_yaw if cam_yaw is not None else (
                 wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None)

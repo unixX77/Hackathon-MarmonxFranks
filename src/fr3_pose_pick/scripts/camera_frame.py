@@ -46,6 +46,15 @@ def load_calibration(path, c, camera_frame='camera_color_optical_frame'):
     return calibration, np.array(calibration['T_ee_camera'], dtype=float)
 
 
+def image_angle_to_quat(angle_deg):
+    """The orientation (xyzw, camera frame) of a brick lying flat in front of the camera whose long side makes
+    `angle_deg` in the IMAGE, measured from the image x axis (right) toward the image y axis (down), i.e. clockwise
+    on the screen. The brick's x axis is then its long side, in the plane of the image (the camera looks almost
+    straight down at the table, so that plane is the table plane). Use it with the long axis 'x'."""
+    half = math.radians(angle_deg) / 2
+    return [0.0, 0.0, math.sin(half), math.cos(half)]
+
+
 def camera_point_to_base(t_base_hand, t_hand_cam, p_cam):
     """A point in the camera frame -> the base frame."""
     return (np.asarray(t_base_hand) @ np.asarray(t_hand_cam) @ np.append(np.asarray(p_cam, dtype=float), 1.0))[:3]

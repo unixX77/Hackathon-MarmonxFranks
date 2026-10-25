@@ -117,3 +117,36 @@ def test_table_check_and_resolving_a_camera_target():
     below = camera_point_of(np.array([0.46, 0.12, top_z - 0.02]))                  # 2 cm below a brick on the table
     with pytest.raises(ValueError, match='BELOW'):
         pp.resolve_camera_target(CONFIG, HAND, HAND_CAM, below, None, 'x', False, 'Pick')
+
+
+def test_image_angle_makes_a_unit_quaternion_about_the_camera_z_axis():
+    for angle in (-90, -30, 0, 45, 90):
+        q = cf.image_angle_to_quat(angle)
+        assert np.linalg.norm(q) == pytest.approx(1.0)
+        d = Rotation.from_quat(q).apply([1.0, 0.0, 0.0])                       # the brick's long axis in the camera frame
+        assert d == pytest.approx([math.cos(math.radians(angle)), math.sin(math.radians(angle)), 0.0], abs=1e-12)
+
+
+@pytest.mark.skipif(not CALIBRATION.exists(), reason='charuco_result.json not found')
+@pytest.mark.parametrize('image_angle', [90, 80, 100, 45, 0, -60])
+def test_image_angle_to_base_yaw_with_the_real_calibration(image_angle):
+    """Hand pointing down at yaw 0: image right is the robot's right (base -y) and image down is toward the robot
+    (base -x), so a long side that is vertical in the image (90 deg) lies along base x (yaw 0), and an image angle of
+    80 deg (turned 10 deg clockwise on the screen from vertical) is a brick turned +10 deg (counter-clockwise from above)."""
+    _, t_hand_cam = cf.load_calibration(CALIBRATION, CONFIG)
+    hand = cf.pose_matrix([0.40, 0.0, 0.30], [1.0, 0.0, 0.0, 0.0])           # tool pointing down, yaw 0
+    yaw, tilt = cf.camera_yaw_to_base(hand, t_hand_cam, cf.image_angle_to_quat(image_angle), 'x')
+    theta = math.radians(image_angle)
+    expected = cf.wrap_line_angle(math.atan2(-math.cos(theta), -math.sin(theta)))
+    difference = abs(math.degrees(cf.wrap_line_angle(yaw - expected)))
+    assert difference < 4.0                                                    # the camera is mounted within ~2 deg of square
+    assert tilt < 6.0
+
+
+def test_the_hand_yaw_at_capture_is_taken_into_account():
+    """The same image angle with the hand turned 25 degrees is a brick turned 25 degrees differently."""
+    straight = cf.pose_matrix([0.4, 0.0, 0.3], [1.0, 0.0, 0.0, 0.0])
+    turned = cf.pose_matrix([0.4, 0.0, 0.3], (Rotation.from_euler('z', 25, degrees=True) * Rotation.from_euler('x', 180, degrees=True)).as_quat())
+    a = cf.camera_yaw_to_base(straight, HAND_CAM, cf.image_angle_to_quat(90), 'x')[0]
+    b = cf.camera_yaw_to_base(turned, HAND_CAM, cf.image_angle_to_quat(90), 'x')[0]
+    assert abs(math.degrees(cf.wrap_line_angle(b - a))) == pytest.approx(25.0, abs=1e-6)
