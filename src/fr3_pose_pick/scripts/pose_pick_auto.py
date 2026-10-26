@@ -17,10 +17,13 @@ What is different here:
   * The result of every run (done or stopped) goes to pose_pick_auto_log.json, not to pose_pick_offsets.json, so these
     runs never dilute measure_grasp_offset.py.
 
-Use it exactly like pose_pick.py (same options), plus --countdown SECONDS (3 to 60, default 5):
+Use it exactly like pose_pick.py (same options), plus --countdown SECONDS (3 to 60, default 5). Where the brick goes:
+by default it is put back DOWN IN THE SAME POSE it was picked from (same x, y and angle, same height), so the whole run
+is "pick it up and set it down right there". Give --place, --place-offset, --place-camera-xyz or --pallet to put it
+somewhere else instead:
 
   ros2 run fr3_pose_pick pose_pick_auto.py --config src/fr3_pose_pick/config/pose_pick.yaml \\
-      --camera-xyz X Y Z --camera-angle A --place-offset 0 0.05
+      --camera-xyz X Y Z --camera-angle A
 
 With --camera-xyz the picture's hand pose is "the arm right now": run it right after the picture, with the arm still,
 or give --ee-pose X Y Z QX QY QZ QW for the pose the picture was taken from.
@@ -36,6 +39,12 @@ import pose_pick as pp
 
 AUTO_LOG = 'pose_pick_auto_log.json'
 FORBIDDEN = ('--step', '--inspect', '--place-inspect')      # each would bring a question back
+PLACE_OPTIONS = ('--place', '--place-offset', '--place-camera-xyz', '--pallet')   # any of these says where it goes
+SAME_POSE = ['--place-offset', '0', '0']                    # an offset of nothing = the pose it was picked from
+
+
+def place_given(args):
+    return any(arg.split('=', 1)[0] in PLACE_OPTIONS for arg in args)
 
 
 class AutoMission(pp.Mission):
@@ -117,6 +126,8 @@ def parse_own(argv):
         if arg.split('=', 1)[0] in FORBIDDEN:
             raise ValueError(f'{arg.split("=", 1)[0]} brings a question back, and this script never asks: '
                              'use pose_pick.py for an interactive run')
+    if not place_given(rest):
+        rest += SAME_POSE                                      # nothing said: put it back where it was picked
     return seconds, rest
 
 
@@ -132,6 +143,8 @@ def main(argv=None):
         return 2
     old_input, old_mission, old_argv = builtins.input, pp.Mission, sys.argv
     builtins.input, pp.Mission = countdown_input(seconds), AutoMission
+    if not place_given(argv):
+        print('Place: none given, so the brick is put back down in the same pose it was picked from.', flush=True)
     sys.argv = [old_argv[0]] + rest + ['--no-inspect', '--no-step']
     try:
         return pp.main()

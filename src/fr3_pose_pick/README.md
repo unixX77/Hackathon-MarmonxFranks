@@ -238,8 +238,11 @@ that goes and picks and places on its own. It does not change `pose_pick.py`: it
 same config, so every locked value (grasp height, centring, place height, grasp force, baseplate) is used as it is.
 
     ros2 run fr3_pose_pick pose_pick_auto.py --config src/fr3_pose_pick/config/pose_pick.yaml \
-        --camera-xyz X Y Z --camera-angle A --place-offset 0 0.05          # same options as pose_pick.py, plus --countdown 3..60
+        --camera-xyz X Y Z --camera-angle A          # same options as pose_pick.py, plus --countdown 3..60
 
+- **Same pose by default.** With no place option the brick is put back down exactly where it was picked: same x, y and angle,
+  released at the locked place height (`place_margin`). `--place`, `--place-offset`, `--place-camera-xyz` or `--pallet` put it
+  somewhere else instead (`--place-offset 0 0.05` is 5 cm to the robot's left).
 - **No questions.** "Type GO" becomes a countdown (default 5 s; Ctrl+C or the e-stop cancels). The inspection stops, step mode
   and correction prompts are always off, `--step`, `--inspect` and `--place-inspect` are refused, and a prompt that still
   appears is never answered: the run stops before it moves.
