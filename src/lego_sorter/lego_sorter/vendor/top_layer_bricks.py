@@ -100,7 +100,10 @@ def geometry_mask_filter(depth, calibration, args):
         for i, mask in enumerate(masks):
             valid = mask & (depth > 0)
             reason = None
-            if valid.sum() < args.min_depth_pixels:
+            roi = getattr(args,'source_roi_mask',None)
+            if roi is not None and (not valid.any() or (valid & roi).sum()/max(valid.sum(),1)<.98):
+                reason = 'outside source boundary or straddles its edge'
+            elif valid.sum() < args.min_depth_pixels:
                 reason = 'insufficient depth for geometry'
             else:
                 height = float(np.median(heights[valid]))

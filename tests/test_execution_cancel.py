@@ -43,3 +43,19 @@ class ExecutionCancellationTests(unittest.TestCase):
                 SafeMover.action(self.runner, self.client, object(), 1)
         self.pending.set_result(self.handle)
         self.handle.cancel_goal_async.assert_called_once()
+
+    def test_robot_health_failure_during_action_cancels_goal(self):
+        self.pending.set_result(self.handle)
+        self.runner.health = Mock()
+        self.runner.health.check.side_effect = [None, RuntimeError('Physical robot time is not advancing')]
+        with self.assertRaisesRegex(RuntimeError, 'not advancing'):
+            SafeMover.action(self.runner, self.client, object(), 1)
+        self.handle.cancel_goal_async.assert_called_once()
+        self.assertTrue(self.runner.cancel.is_set())
+
+    def test_robot_health_failure_before_action_sends_no_goal(self):
+        self.runner.health = Mock()
+        self.runner.health.check.side_effect = RuntimeError('Franka reflex')
+        with self.assertRaisesRegex(RuntimeError, 'reflex'):
+            SafeMover.action(self.runner, self.client, object(), 1)
+        self.client.send_goal_async.assert_not_called()

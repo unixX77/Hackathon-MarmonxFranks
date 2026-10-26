@@ -39,6 +39,80 @@ def wait_future(future,timeout,cancel=None):
     return future.result()
 
 
+class RobotHealthStatus:
+    """Distinguish fresh ROS publication from advancing physical robot state."""
+    def __init__(self, max_age=.5, clock=time.monotonic):
+        self.max_age, self.clock = max_age, clock
+        self.lock = threading.Lock()
+        self.robot_time = self.received_at = self.advanced_at = None
+        self.mode = None
+        self.errors = []
+
+    def observe(self, robot_time, mode, errors):
+        now = self.clock()
+        with self.lock:
+            if not math.isfinite(robot_time):
+                self.advanced_at = None
+            elif self.robot_time is not None and robot_time > self.robot_time:
+                self.advanced_at = now
+            elif self.robot_time is not None and robot_time < self.robot_time:
+                self.advanced_at = None
+            self.robot_time, self.received_at = robot_time, now
+            self.mode, self.errors = mode, list(errors)
+
+    def snapshot(self):
+        now = self.clock()
+        with self.lock:
+            return dict(robot_time_s=self.robot_time, robot_mode=self.mode,
+                        current_errors=list(self.errors),
+                        publication_age_s=None if self.received_at is None else now-self.received_at,
+                        robot_time_progress_age_s=None if self.advanced_at is None else now-self.advanced_at)
+
+    def check_feedback(self):
+        """Fresh physical telemetry for read-only capture; does not admit motion."""
+        state = self.snapshot()
+        age = state['publication_age_s']
+        if age is None or age > self.max_age:
+            raise RuntimeError('No fresh Franka robot-health feedback; do not execute')
+        age = state['robot_time_progress_age_s']
+        if age is None or age > self.max_age:
+            raise RuntimeError('Physical Franka robot time is not advancing; ROS stamps alone are insufficient')
+        return state
+
+    def check(self):
+        state = self.check_feedback()
+        if state['current_errors']:
+            raise RuntimeError('Franka current errors: ' + ', '.join(state['current_errors']))
+        # FrankaRobotState.ROBOT_MODE_MOVE == 2: active FCI control, including hold.
+        if state['robot_mode'] != 2:
+            raise RuntimeError(f'Franka is not in active control (robot_mode={state["robot_mode"]}); do not execute')
+        return state
+
+
+class RobotHealth(RobotHealthStatus):
+    def __init__(self, node, c):
+        from franka_msgs.msg import FrankaRobotState
+        from rclpy.qos import qos_profile_sensor_data
+        super().__init__(float(c['feedback_max_age_s']))
+        self.sub = node.create_subscription(FrankaRobotState,
+            '/franka_robot_state_broadcaster/robot_state', self.receive, qos_profile_sensor_data)
+
+    def receive(self, msg):
+        errors = [name for name in msg.current_errors.get_fields_and_field_types()
+                  if getattr(msg.current_errors, name)]
+        self.observe(float(msg.time), int(msg.robot_mode), errors)
+
+    def wait_ready(self, timeout=5.):
+        deadline = time.monotonic() + timeout
+        while True:
+            try:
+                return self.check()
+            except RuntimeError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(.05)
+
+
 class Feedback:
     def __init__(self,node,c):
         from sensor_msgs.msg import JointState
@@ -95,6 +169,8 @@ class SafeMover(baseline.Mover):
         from action_msgs.msg import GoalStatus
         # Goal acknowledgement must be consumed even when cancellation arrives meanwhile.
         if self.cancel.is_set(): raise Cancelled('Stopped before sending robot command')
+        health=getattr(self,'health',None)
+        if health is not None: health.check()
         pending=client.send_goal_async(goal)
         try: handle=wait_future(pending,10)
         except (TimeoutError, KeyboardInterrupt):
@@ -107,6 +183,7 @@ class SafeMover(baseline.Mover):
             while not result_future.done():
                 if self.cancel.wait(.02): raise Cancelled('Stopped during robot action')
                 self.feedback.fresh()
+                if health is not None: health.check()
                 if time.monotonic()>deadline: raise TimeoutError('Robot action timeout')
             result=result_future.result()
         except BaseException:
@@ -119,8 +196,86 @@ class SafeMover(baseline.Mover):
         return result.result
     def execute(self,label,trajectory):
         from moveit_msgs.action import ExecuteTrajectory
+        if getattr(self,'c',{}).get('tcp_segment_speed_limit_m_s'):
+            self.limit_tcp_speed(trajectory)
+        # Recheck after potentially lengthy FK/timing work and before sending a goal.
+        joint=trajectory.joint_trajectory
+        names=[f'fr3_joint{i}' for i in range(1,8)]
+        self.feedback.stationary()
+        if not joint.points or not all(n in joint.joint_names for n in names):
+            raise RuntimeError('Missing FR3 trajectory start')
+        first=np.array([joint.points[0].positions[joint.joint_names.index(n)] for n in names])
+        if np.max(np.abs(first-self.feedback.fresh()))>.01:
+            raise RuntimeError('Robot moved after planning; refusing trajectory execution')
         if self.action(self.executor,ExecuteTrajectory.Goal(trajectory=trajectory),180).error_code.val!=1:
             raise RuntimeError(label+': MoveIt execution failed')
+    def limit_tcp_speed(self,trajectory):
+        """Stretch timestamps using sampled TCP FK; not a continuous speed limiter."""
+        from moveit_msgs.srv import GetPositionFK
+        limit=float(self.c['tcp_segment_speed_limit_m_s'])
+        if not 0<limit<=.02: raise ValueError('TCP segment-speed setting must be within (0,.02] m/s')
+        client=self.node.create_client(GetPositionFK,'compute_fk')
+        try:
+            if not client.wait_for_service(timeout_sec=5): raise RuntimeError('FK unavailable for TCP timing check')
+            positions=[]; points=trajectory.joint_trajectory.points
+            times=np.array([p.time_from_start.sec+p.time_from_start.nanosec/1e9 for p in points])
+            if len(points)<2 or not np.isfinite(times).all() or np.any(np.diff(times)<=0):
+                raise ValueError('Trajectory timing is invalid')
+            for p in points:
+                req=GetPositionFK.Request(); req.header.frame_id=self.c['base_frame']; req.fk_link_names=[self.c['ee_frame']]
+                req.robot_state.is_diff=True; req.robot_state.joint_state.name=list(trajectory.joint_trajectory.joint_names)
+                req.robot_state.joint_state.position=list(p.positions)
+                r=self.wait(client.call_async(req),5)
+                if r.error_code.val!=1 or len(r.pose_stamped)!=1: raise RuntimeError('TCP FK timing check failed')
+                xyz=r.pose_stamped[0].pose.position; positions.append([xyz.x,xyz.y,xyz.z])
+            if not np.isfinite(positions).all(): raise RuntimeError('Nonfinite TCP FK')
+            peak=float(np.max(np.linalg.norm(np.diff(positions,axis=0),axis=1)/np.diff(times)))
+            stretch=max(1.,peak/limit)
+            for p,t in zip(points,times*stretch):
+                ns=int(math.ceil(t*1e9)); p.time_from_start.sec=ns//10**9; p.time_from_start.nanosec=ns%10**9
+                p.velocities=[v/stretch for v in p.velocities]; p.accelerations=[]
+        finally: self.node.destroy_client(client)
+    def move_pose(self,label,xyz,quaternion):
+        """Collision-checked Cartesian move retaining a taught observation quaternion."""
+        from geometry_msgs.msg import Pose
+        from moveit_msgs.srv import GetCartesianPath
+        matrix(xyz,quaternion)
+        if not (self.c['workspace_x'][0]<=xyz[0]<=self.c['workspace_x'][1]
+                and self.c['workspace_y'][0]<=xyz[1]<=self.c['workspace_y'][1]
+                and self.c['table_top_z']+self.c['min_tcp_above_table']<=xyz[2]<=self.c['max_hover_z']):
+            raise ValueError('Observation target outside workspace')
+        names=[f'fr3_joint{i}' for i in range(1,8)]
+        target=Pose(); target.position.x,target.position.y,target.position.z=map(float,xyz)
+        target.orientation.x,target.orientation.y,target.orientation.z,target.orientation.w=map(float,quaternion)
+        req=GetCartesianPath.Request(); req.header.frame_id=self.c['base_frame'];req.group_name='fr3_arm';req.link_name=self.c['ee_frame']
+        req.start_state.is_diff=True;req.start_state.joint_state.name=names;req.start_state.joint_state.position=self.feedback.fresh().tolist()
+        req.waypoints=[target];req.max_step=.005;req.revolute_jump_threshold=.3;req.avoid_collisions=True
+        r=self.wait(self.path_client.call_async(req),20); jt=r.solution.joint_trajectory
+        if r.error_code.val!=1 or r.fraction<.999 or len(jt.points)<2: raise RuntimeError('Taught observation path refused')
+        indices=[jt.joint_names.index(n) for n in names]
+        q=np.array([[p.positions[i] for i in indices] for p in jt.points])
+        if np.max(np.abs(q[0]-self.feedback.fresh()))>.01 or np.max(np.abs(np.diff(q,axis=0)))>.3:
+            raise RuntimeError('Observation trajectory start/discontinuity check failed')
+        if baseline.swing_violation(np.ptp(q,axis=0),self.c['max_joint_swing'],self.c['max_wrist_swing']):
+            raise RuntimeError('Observation path exceeds joint swing limits')
+        times,v=baseline.retime(q,min(self.scale,.02))
+        for p,t,velocity in zip(jt.points,times,v):
+            ns=int(t*1e9);p.time_from_start.sec=ns//10**9;p.time_from_start.nanosec=ns%10**9
+            p.velocities=[float(velocity[names.index(n)]) for n in jt.joint_names];p.accelerations=[]
+        self.execute(label,r.solution)
+        self.settle()
+        actual=self.hand_pose(); goal=matrix(xyz,quaternion)
+        angle=math.degrees(Rotation.from_matrix(actual[:3,:3].T@goal[:3,:3]).magnitude())
+        if np.linalg.norm(actual[:3,3]-xyz)>self.c['arrival_abort'] or angle>self.c['arrival_angle_deg']:
+            raise RuntimeError('Taught observation arrival check failed')
+        return list(xyz)
+    def settle(self):
+        deadline=time.monotonic()+3
+        while True:
+            try: self.feedback.stationary(); return
+            except RuntimeError:
+                if time.monotonic()>deadline: raise
+                if self.cancel.wait(.05): raise Cancelled('Stopped waiting for arrival')
     def hand(self,close=False):
         from franka_msgs.action import Grasp,Move
         goal=Grasp.Goal() if close else Move.Goal()
@@ -161,7 +316,11 @@ class Hardware:
         self.target_source=None; self.target_id=None; self.saved_acm=None
         self.inspection_waiting=False; self.inspection_approval=threading.Event()
     def ready(self):
-        if self.mover is None: self.mover=SafeMover(self.node,self.c,self.tf,self.feedback)
+        if self.mover is None:
+            self.mover=SafeMover(self.node,self.c,self.tf,self.feedback)
+            if self.c.get('staged_physical_trial'):
+                self.mover.health=RobotHealth(self.node,self.c)
+                self.mover.health.wait_ready()
     def stationary(self): self.feedback.stationary()
     def begin_capture(self):
         q=self.feedback.fresh()
@@ -188,12 +347,22 @@ class Hardware:
     def prepare(self,target=None):
         from moveit_msgs.msg import PlanningSceneComponents,AllowedCollisionEntry
         from moveit_msgs.srv import GetPlanningScene
-        source=[s for s in layout(self.c['source'],self.c['block_size'],'source') if s['id'] not in self.scene['removed']]
+        detected=self.c.get('source_mode')=='detected'
+        source=[] if detected else [s for s in layout(self.c['source'],self.c['block_size'],'source') if s['id'] not in self.scene['removed']]
         objects=[table_collision(self.c)]
         objects += [self.box(s['id'],s['centre'],s['dimensions'],s['yaw']) for s in source]
         objects += [self.box(s['id'],s['centre'],s['dimensions'],s['yaw']) for s in self.scene['placed'].values()]
         objects += [self.box(f['id'],f['centre'],f['dimensions'],f.get('yaw',0)) for f in self.c.get('fixtures',[])]
+        if detected:
+            from moveit_msgs.msg import CollisionObject
+            req=GetPlanningScene.Request();req.components.components=PlanningSceneComponents.WORLD_OBJECT_NAMES
+            current=self.mover.wait(self.scene_client.call_async(req),10).scene
+            objects += [CollisionObject(id=o.id,operation=CollisionObject.REMOVE)
+                        for o in current.world.collision_objects if o.id.startswith('source/')]
         self.apply(objects)
+        if detected:
+            self.target_id=None;self.saved_acm=None;self.target_source=target
+            return
         if target is not None:
             nearest=min(source,key=lambda s:np.linalg.norm(np.array(s['centre'])-target['centre']),default=None)
             if nearest is None or np.linalg.norm(np.array(nearest['centre'])-target['centre'])>.004:
@@ -219,9 +388,10 @@ class Hardware:
         q=Rotation.from_matrix(t[:3,:3]).as_quat(); pose=obj.primitive_poses[0]
         pose.orientation.x,pose.orientation.y,pose.orientation.z,pose.orientation.w=map(float,q)
         attached=AttachedCollisionObject(link_name=self.c['ee_frame'],object=obj,touch_links=['fr3_leftfinger','fr3_rightfinger','fr3_hand'])
-        remove=CollisionObject(id=self.target_id,operation=CollisionObject.REMOVE)
-        self.apply([remove],[attached],self.saved_acm)
-        self.scene['removed'].append(self.target_id); atomic(self.path,self.scene)
+        removes=[CollisionObject(id=self.target_id,operation=CollisionObject.REMOVE)] if self.target_id else []
+        self.apply(removes,[attached],self.saved_acm)
+        if self.target_id: self.scene['removed'].append(self.target_id)
+        atomic(self.path,self.scene)
     def detach(self,target):
         from moveit_msgs.msg import AttachedCollisionObject,CollisionObject
         attached=AttachedCollisionObject(link_name=self.c['ee_frame'],object=CollisionObject(id='lego_held',operation=CollisionObject.REMOVE))
@@ -259,5 +429,7 @@ class Hardware:
             xyz=list(plan[key])
             if stage=='TRANSFER': xyz[2]=max(xyz[2],self.c['transfer_z'])
             if stage=='OBSERVE_MOVE': self.prepare()
-            m.move(stage,xyz,plan['yaw'])
+            if stage=='OBSERVE_MOVE' and self.c.get('observation_quaternion_xyzw'):
+                m.move_pose(stage,xyz,self.c['observation_quaternion_xyzw'])
+            else: m.move(stage,xyz,plan['yaw'])
             if stage=='RETREAT': self.prepare()

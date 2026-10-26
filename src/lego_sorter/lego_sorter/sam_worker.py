@@ -20,6 +20,7 @@ def main():
     for key in ['HF_HOME','TORCH_HOME','XDG_CACHE_HOME','TMPDIR']:
         path=runtime/'cache'/key; path.mkdir(parents=True,exist_ok=True); os.environ[key]=str(path)
     sys.path.insert(0,str(Path(__file__).parent/'vendor'))
+    sys.path.insert(0,str(Path(__file__).resolve().parents[1]))
     import cv2
     import numpy as np
     import pyrealsense2 as rs
@@ -87,6 +88,11 @@ def main():
                 (output/'capture.json').write_text(json.dumps(dict(ack,stamp_ns=stamp_ns)))
                 args=build_parser().parse_args([str(output),'--no-show','--brick-size-mm',*[str(x*1000) for x in c['block_size']],'--top-min-support','1'])
                 args.block_height_mm=args.brick_size_mm[2]
+                if c.get('source_boundary'):
+                    from lego_sorter.regions import source_pixel_mask
+                    base_camera=np.asarray(ack['base_parent'])@np.asarray(ack['parent_camera'])
+                    args.source_roi_mask=source_pixel_mask(depth_image,camera_info,base_camera,c['source_boundary'])
+                    cv2.imwrite(str(output/'source_roi.png'),args.source_roi_mask.astype(np.uint8)*255)
                 try:
                     with contextlib.redirect_stdout(sys.stderr):
                         images,metadata,final=process_frame(bgr,depth_image,camera_info,model,processor,args,device,dtype)

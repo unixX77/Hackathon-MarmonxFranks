@@ -1,5 +1,12 @@
 # FR3 structured LEGO sorting integration
 
+For the current **supervised physical one-layer trial**, use
+[`scripts/run_one_layer_hardware.sh`](scripts/run_one_layer_hardware.sh), with
+the boundary/pose teaching and staged commands in
+[the physical trial runbook](docs/PHYSICAL_ONE_LAYER.md).
+`run_one_layer_mock.sh` remains simulation only. The physical runner has no mock
+fallback and does not enable the unimplemented ten-layer stud/box task below.
+
 The requested task is now a **300-brick, ten-layer interlocked source lattice**,
 rebuilt as one red lattice with non-red bricks dropped into a trash box.
 See [the red lattice task](docs/RED_LATTICE.md) and use

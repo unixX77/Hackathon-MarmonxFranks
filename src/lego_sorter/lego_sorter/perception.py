@@ -13,9 +13,13 @@ from .core import adapt_detection, calibration, inside, layout, bounds
 def empty_depth(depth,info,base_camera,c):
     """Require entire model footprint in view and nearly all valid pixels at bare support plane."""
     K=np.array(info['aligned_depth_intrinsics']['K']); inv=np.linalg.inv(K)
-    cells=layout(c['source'],c['block_size'],'source'); boxes=[bounds(s) for s in cells]
-    x0=min(b[0] for b in boxes); x1=max(b[2] for b in boxes)
-    y0=min(b[1] for b in boxes); y1=max(b[3] for b in boxes); z=c['source']['origin'][2]
+    if c.get('source_boundary'):
+        x0,x1=c['source_boundary']['x']; y0,y1=c['source_boundary']['y']
+    else:
+        cells=layout(c['source'],c['block_size'],'source'); boxes=[bounds(s) for s in cells]
+        x0=min(b[0] for b in boxes); x1=max(b[2] for b in boxes)
+        y0=min(b[1] for b in boxes); y1=max(b[3] for b in boxes)
+    z=c['table_top_z']
     corners=np.array([[x0,y0,z,1],[x1,y0,z,1],[x1,y1,z,1],[x0,y1,z,1]])
     camera=(np.linalg.inv(base_camera)@corners.T)[:3]; uv=K@camera
     if np.any(camera[2]<=0): return False,'Source footprint behind camera'

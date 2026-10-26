@@ -14,7 +14,8 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'src/lego_sorter'))
 
 
-def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=False):
+def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=False,
+               target_pose=None, diagnostic_context=None):
     """Capture-based hover only; default is planning/display without execution."""
     import numpy as np
     from geometry_msgs.msg import Pose
@@ -27,9 +28,14 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
     from lego_sorter.hardware import wait_future, table_collision
     from lego_sorter.vendor.ameed_motion import nearest_yaw, tool_down_quaternion, swing_violation, retime
 
+    if target_pose is not None and execute:
+        raise ValueError('Relative hover correction supports planning only')
     feedback.stationary()
-    xyz = list(brick['top_base_raw_m'])
-    xyz[2] += clearance  # TCP height above the measured top, not a grasp pose.
+    if target_pose is None:
+        xyz = list(brick['top_base_raw_m'])
+        xyz[2] += clearance  # TCP height above the measured top, not a grasp pose.
+    else:
+        xyz = [target_pose.position.x, target_pose.position.y, target_pose.position.z]
     if not (c['workspace_x'][0] <= xyz[0] <= c['workspace_x'][1]
             and c['workspace_y'][0] <= xyz[1] <= c['workspace_y'][1]
             and c['table_top_z'] + clearance <= xyz[2] <= c['max_hover_z']):
@@ -39,10 +45,14 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
     q = tf.rotation
     from scipy.spatial.transform import Rotation
     rot = Rotation.from_quat([q.x, q.y, q.z, q.w]).as_matrix()
-    yaw = nearest_yaw(math.radians(brick['yaw_base_deg']), math.atan2(rot[1, 0], rot[0, 0]))
-    target = Pose()
-    target.position.x, target.position.y, target.position.z = map(float, xyz)
-    target.orientation.x, target.orientation.y, target.orientation.z, target.orientation.w = tool_down_quaternion(yaw)
+    if target_pose is None:
+        yaw = nearest_yaw(math.radians(brick['yaw_base_deg']), math.atan2(rot[1, 0], rot[0, 0]))
+        target = Pose()
+        target.position.x, target.position.y, target.position.z = map(float, xyz)
+        target.orientation.x, target.orientation.y, target.orientation.z, target.orientation.w = tool_down_quaternion(yaw)
+    else:
+        target = target_pose
+        yaw = math.atan2(rot[1, 0], rot[0, 0])
     names = [f'fr3_joint{i}' for i in range(1, 8)]
     request = GetCartesianPath.Request()
     request.header.frame_id = c['base_frame']
@@ -110,6 +120,17 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
         if response.error_code.val != 1 or len(response.pose_stamped) != 1:
             raise RuntimeError('TCP forward-kinematics check failed')
         p = response.pose_stamped[0].pose.position
+        if target_pose is not None:
+            # Relative alignment preview must not introduce a descent or rotation.
+            if abs(p.z - xyz[2]) > .001:
+                raise RuntimeError('Relative hover path changes TCP height by more than 1 mm')
+            actual_q = response.pose_stamped[0].pose.orientation
+            a = np.array([actual_q.x, actual_q.y, actual_q.z, actual_q.w])
+            b = np.array([target.orientation.x, target.orientation.y,
+                          target.orientation.z, target.orientation.w])
+            angle = 2 * math.acos(float(np.clip(abs(a @ b) / (np.linalg.norm(a)*np.linalg.norm(b)), 0., 1.)))
+            if angle > math.radians(.5):
+                raise RuntimeError('Relative hover path changes orientation by more than 0.5 degrees')
         tcp_positions.append([p.x, p.y, p.z])
     # Conservative preview/demo setting: segment averages <= 10 mm/s.
     # This is a sampled planning check, not a continuous hardware speed limiter.
@@ -130,15 +151,18 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
     with feedback.lock:
         if feedback.guard_moved:
             raise RuntimeError('Robot moved since capture; discard the hover plan')
-    summary = dict(purpose='Hover-only plan; execution requires explicit --execute-hover.',
+    summary = dict(purpose=('Relative alignment plan; separate execution requires explicit --execute.' if target_pose is not None
+                            else 'Hover-only plan; execution requires explicit --execute-hover.'),
                    target_tcp_m=xyz, target_yaw_deg=math.degrees(yaw),
-                   clearance_above_brick_top_m=clearance, fraction=result.fraction,
+                   clearance_above_brick_top_m=clearance if brick is not None else None, fraction=result.fraction,
                    preview_joint_speed_scale=speed_scale, preview_duration_s=float(times[-1]),
                    maximum_tcp_segment_average_m_s=peak/stretch,
                    tcp_segment_speed_limit_m_s=speed_limit,
                    world_object_ids=objects, camera_collision_model_added=False,
                    table_collision=message_to_ordereddict(table),
                    trajectory=message_to_ordereddict(result.solution))
+    if diagnostic_context is not None:
+        summary['diagnostic_context'] = diagnostic_context
     (output / 'hover_plan.json').write_text(json.dumps(summary, indent=2, allow_nan=False))
     qos = QoSProfile(depth=1, durability=DurabilityPolicy.TRANSIENT_LOCAL)
     display_topic = '/lego_sorter/hover_preview'
@@ -181,7 +205,7 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
     if execute:
         from rclpy.action import ActionClient
         from moveit_msgs.action import ExecuteTrajectory
-        from lego_sorter.hardware import SafeMover
+        from lego_sorter.hardware import SafeMover, RobotHealth
 
         class HoverExecutor:
             # Use the main adapter's monitored execution and cancellation behavior.
@@ -190,10 +214,12 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
 
         runner = HoverExecutor()
         runner.feedback = feedback
+        runner.health = RobotHealth(node, c)
         runner.cancel = threading.Event()
         runner.executor = ActionClient(node, ExecuteTrajectory, 'execute_trajectory')
         if not runner.executor.wait_for_server(timeout_sec=5):
             raise RuntimeError('MoveIt execute_trajectory action unavailable')
+        runner.health.wait_ready()
         feedback.stationary()
         if np.max(np.abs(feedback.fresh() - positions[0])) > .01:
             raise RuntimeError('Robot no longer matches the trajectory start; recapture and replan')
@@ -227,6 +253,7 @@ def plan_hover(node, buffer, feedback, c, brick, output, clearance, execute=Fals
             raise
         finally:
             runner.executor.destroy()
+    return result.solution
 
 
 def main():

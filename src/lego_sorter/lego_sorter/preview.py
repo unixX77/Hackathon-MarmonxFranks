@@ -6,6 +6,23 @@ import math
 from bisect import bisect_right
 
 
+def horizontal_tool_shift(position, quaternion, distance):
+    """Small displacement along tool X projected onto base XY; keep base Z fixed."""
+    if (len(position) != 3 or len(quaternion) != 4
+            or not all(math.isfinite(v) for v in [*position, *quaternion, distance])
+            or not 0 < abs(distance) <= .025):
+        raise ValueError('Need finite XYZ, xyzw quaternion and a nonzero shift of at most 25 mm')
+    x, y, z, w = quaternion
+    if abs(sum(v*v for v in quaternion) - 1) > .001:
+        raise ValueError('Tool quaternion must have unit norm')
+    if 1 - 2*(x*x + y*y) > -math.cos(math.radians(5)):
+        raise ValueError('Relative hover planning requires the tool to point downward within 5 degrees')
+    ax, ay = 1 - 2*(y*y + z*z), 2*(x*y + z*w)
+    norm = math.hypot(ax, ay)
+    return [position[0] + distance*ax/norm,
+            position[1] + distance*ay/norm, position[2]]
+
+
 class PreviewSampler:
     """Sample saved joint positions for visualization at an elapsed wall time.
 

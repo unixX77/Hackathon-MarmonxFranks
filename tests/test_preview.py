@@ -1,8 +1,9 @@
 """Timing validation uses dictionaries and never contacts ROS or a robot."""
 import copy
+import math
 import unittest
 
-from lego_sorter.preview import audit_display, align_display_start, PreviewSampler
+from lego_sorter.preview import audit_display, align_display_start, PreviewSampler, horizontal_tool_shift
 
 
 class PreviewTests(unittest.TestCase):
@@ -17,6 +18,28 @@ class PreviewTests(unittest.TestCase):
         self.assertEqual(report['last_stamp_s'], 45.743231498)
         self.assertEqual(report['fixed_005s_nominal_duration_s'], .1)
         self.assertEqual(self.display, before)
+
+    def test_horizontal_tool_x_shift_rotates_into_base_xy_and_holds_z(self):
+        position = [.4, 0., .09]
+        yaw = math.radians(21)
+        quaternion = [math.cos(yaw/2), math.sin(yaw/2), 0., 0.]
+        result = horizontal_tool_shift(position, quaternion, .02)
+        self.assertAlmostEqual(result[0], .4 + .02*math.cos(yaw))
+        self.assertAlmostEqual(result[1], .02*math.sin(yaw))
+        self.assertEqual(result[2], .09)
+        self.assertEqual(position, [.4, 0., .09])
+        reverse = horizontal_tool_shift(position, quaternion, -.02)
+        self.assertAlmostEqual(reverse[0], .4 - .02*math.cos(yaw))
+        self.assertAlmostEqual(reverse[1], -.02*math.sin(yaw))
+        self.assertEqual(reverse[2], .09)
+
+    def test_shift_rejects_large_distance_and_wrong_tool_orientation(self):
+        for distance, quaternion in ((.026, [1., 0., 0., 0.]),
+                                     (.02, [0., 0., 0., 1.]),
+                                     (float('nan'), [1., 0., 0., 0.])):
+            with self.subTest(distance=distance, quaternion=quaternion):
+                with self.assertRaises(ValueError):
+                    horizontal_tool_shift([.4, 0., .09], quaternion, distance)
 
     def test_sampler_uses_elapsed_seconds_and_preserves_original(self):
         before = copy.deepcopy(self.display)

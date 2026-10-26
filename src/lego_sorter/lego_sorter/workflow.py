@@ -13,6 +13,10 @@ class MockWorld:
         self.c=c; self.path=inside(Path(c['runtime'])/'mock_world.json')
         if not self.path.exists():
             bricks=layout(c['source'],c['block_size'],'source')
+            count=c.get('mock_brick_count',len(bricks))
+            if isinstance(count,bool) or not isinstance(count,int) or not 1<=count<=len(bricks):
+                raise ValueError(f'mock_brick_count must be between 1 and {len(bricks)}')
+            bricks=bricks[:count]
             colours=c['mock_colours']
             for i,b in enumerate(bricks):
                 b.update(colour=colours[i%len(colours)],confidence='high',quality='mock',frame=c['base_frame'])
@@ -58,17 +62,22 @@ class ReplayWorld(MockWorld):
 
 
 class LocalTransport:
-    def __init__(self,m,world): self.m=m; self.world=world
-    def observation_pose(self): return self.m.run('observe_pose')
+    def __init__(self,m,world,stage_feedback=None):
+        self.m=m; self.world=world
+        self.stage_feedback=stage_feedback or (lambda *_:None)
+    def observation_pose(self): return self.m.run('observe_pose',feedback=self.stage_feedback)
     def observe(self):
+        self.stage_feedback('CAPTURE',self.hand())
         token,epoch=self.m.capture_begin()
         try: o=self.world.observe(epoch)
         except Exception:
             self.m.capture_end(token,'',0); raise
         self.m.capture_end(token,o['id'],o['stamp_ns']); return o
-    def pick(self,b,o): return self.m.run('pick',b,o['epoch'])
-    def place(self,s,held): return self.m.run('place',dict(s,held_id=held,engage_studs=False))
-    def verify(self,s): return self.world.verify(s)
+    def pick(self,b,o): return self.m.run('pick',b,o['epoch'],feedback=self.stage_feedback)
+    def place(self,s,held): return self.m.run('place',dict(s,held_id=held,engage_studs=False),feedback=self.stage_feedback)
+    def verify(self,s):
+        self.stage_feedback('VERIFY_PLACEMENT',self.hand())
+        return self.world.verify(s)
     def hand(self): return self.m.state['hand']
     def stop(self): self.m.stop()
     def resume(self):

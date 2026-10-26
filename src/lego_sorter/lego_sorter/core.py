@@ -25,7 +25,7 @@ def inside(path):
     return path
 
 
-def load_config(path):
+def load_config(path,supervised_trial=False):
     c = yaml.safe_load(Path(path).read_text())
     inside(c['runtime']).mkdir(parents=True, exist_ok=True)
     if c['mode'] not in ('mock', 'hardware', 'replay'):
@@ -45,12 +45,15 @@ def load_config(path):
             raise ValueError('Stud-connected lattice dismantling/assembly requires validated extraction and seating controllers; currently unsupported')
         if any(s.get('kind')=='drop_box' for s in c['destinations'].values()):
             raise ValueError('Trash-box drops are currently mock-only; hardware needs measured box geometry and validated release/fill handling')
-        if not c.get('hardware_validated'):
+        if supervised_trial:
+            from .physical_trial import validate_trial
+            validate_trial(c)
+        if not c.get('hardware_validated') and not supervised_trial:
             raise ValueError('Hardware configuration has not been commissioned; inspect README')
         calibration(c)
         if c['verification']!='operator': raise ValueError('Hardware requires explicit operator placement verification')
-        if not c.get('geometry_confirmed'): raise ValueError('Confirm physical stack, tray, fingers and workspace geometry')
-        if not c.get('fixtures') or not any(f['id']=='discard_tray' for f in c['fixtures']):
+        if not c.get('geometry_confirmed') and not supervised_trial: raise ValueError('Confirm physical stack, tray, fingers and workspace geometry')
+        if not supervised_trial and (not c.get('fixtures') or not any(f['id']=='discard_tray' for f in c['fixtures'])):
             raise ValueError('Hardware requires measured discard_tray collision geometry')
     for spec in [c['source'],*c['destinations'].values()]:
         if spec.get('kind')=='drop_box':
@@ -111,6 +114,10 @@ def adapt_detection(metadata, observation_id, base_parent, parent_camera, c):
             raise ValueError('Invalid object rotation')
         top = (t @ np.r_[b['centre_cam_m'],1])[:3]
         centre = (t @ np.r_[b['box_centre_cam_m'],1])[:3]
+        if c.get('source_mode')=='detected':
+            region=c['source_boundary']
+            if not (region['x'][0]<=centre[0]<=region['x'][1] and region['y'][0]<=centre[1]<=region['y'][1]):
+                continue
         rb = t[:3,:3] @ r
         if not np.allclose(top-centre, rb[:,2]*dims[2]/2, atol=.0003):
             raise ValueError('Top-face and volume-centre conventions inconsistent')
@@ -254,12 +261,16 @@ class Store:
             elif p['mode']=='alternating':
                 count=sum(s['state']=='PLACED' and s['destination']=='diverse' for s in self.slots)
                 if colour==p['sequence'][count%len(p['sequence'])]: dest='diverse'
-            obstacles=[s for s in self.slots if s['state']!='EMPTY' and s.get('kind')!='drop_box'] + layout(self.c['source'],self.c['block_size'],'source')
+            check_clearance=self.c.get('destination_clearance_check',True)
+            if not check_clearance and any(d['layers']!=1 for d in self.c['destinations'].values()):
+                raise ValueError('Disabling destination clearance is restricted to single-layer table placement')
+            obstacles=([s for s in self.slots if s['state']!='EMPTY' and s.get('kind')!='drop_box']
+                       + ([] if self.c.get('source_mode')=='detected' else layout(self.c['source'],self.c['block_size'],'source'))) if check_clearance else []
             for s in self.slots:
                 if s['destination']!=dest or s['state']!='EMPTY': continue
                 b=bounds(s,self.c['finger_thickness'])
                 if not (self.c['workspace_x'][0]<=b[0]<=b[2]<=self.c['workspace_x'][1] and self.c['workspace_y'][0]<=b[1]<=b[3]<=self.c['workspace_y'][1]): continue
-                if s.get('kind')!='drop_box' and (not supported(s,self.slots,self.c['minimum_support_fraction']) or not clear(s,obstacles,self.c)): continue
+                if check_clearance and s.get('kind')!='drop_box' and (not supported(s,self.slots,self.c['minimum_support_fraction']) or not clear(s,obstacles,self.c)): continue
                 if any(abs(o['centre'][2]-s['centre'][2])<self.c['block_size'][2]-.0001 and overlap(bounds(s),bounds(o))>1e-10 for o in obstacles): continue
                 plan_place(self.c,*s['centre'][:2],s['yaw'],z=s['centre'][2])
                 s.update(state='RESERVED',transaction=uuid.uuid4().hex,brick=copy.deepcopy(brick)); self.save(); return copy.deepcopy(s)
