@@ -28,6 +28,9 @@ Poses are in fr3_link0 (the robot base), metres; +x away from the robot, +y to i
                        0 0.05 = 5 cm to the robot's left. It follows any correction you make at the
                        inspection stop. Height: on the table.
   --place-yaw DEG      long-side angle of the placed brick (default: the angle it was picked at)
+  --pallet             put the brick in the NEXT FREE SLOT of the pallet grid (config/pallet.yaml) and remember it,
+                       so every run fills the next slot: a row, then the next row. --pallet-slot N picks a slot
+                       (from 1), --pallet-file FILE another pallet file. Manage it with pallet_tool.py
 Height of a camera point (a brick on the table, on other bricks, or on anything else): worked out
 automatically. The measured top face is corrected by camera_height_bias; if it is within layer_snap_tolerance
 of a whole brick layer (the brick height in the config is one layer) the exact layer height is used, else the
@@ -121,9 +124,10 @@ def plan_pick(c, x, y, z=None, yaw=0.0, pose_is_tcp=False):
     if centre_z - height / 2 < top - 0.002:
         raise ValueError(f'Brick centre z={centre_z:.4f} puts the brick {1000 * (top - (centre_z - height / 2)):.0f} mm '
                          f'below the table top ({top:.3f})')
-    if grip_z < top + c['min_tcp_above_table']:
+    floor = max(c['min_tcp_above_table'], c.get('fingertip_below_tcp', 0.0) + c.get('fingertip_table_margin', 0.001))
+    if grip_z < top + floor:
         raise ValueError(f'Grasp height z={grip_z:.4f} would put the fingertips in the table '
-                         f'(needs at least {top + c["min_tcp_above_table"]:.4f})')
+                         f'(needs at least {top + floor:.4f})')
     if grip_z + c['clearance'] > c['max_hover_z']:
         raise ValueError(f'Hover height {grip_z + c["clearance"]:.3f} is above max_hover_z {c["max_hover_z"]}')
     inspect = c.get('inspect_height', 0.04)
@@ -263,9 +267,41 @@ def task_config(c, plan):
                              'acceleration_scale', 'grasp_force', 'grasp_width', 'gripper_speed',
                              'open_width', 'base_frame', 'ee_frame')}
     cfg['pick'] = cfg['place'] = list(plan['grip'])
-    if 'min_open_clearance' in c:
-        cfg['min_open_clearance'] = c['min_open_clearance']
+    for key in ('min_open_clearance', 'hand_zero_width'):
+        if key in c:
+            cfg[key] = c[key]
     return cfg
+
+
+def apply_baseplate(c):
+    """The bricks stand on a flat baseplate lying on the table: raise the surface they stand on (and the table
+    in the planning scene) by baseplate_thickness. Done once, when the config is loaded."""
+    thickness = c.get('baseplate_thickness') or 0.0
+    if not thickness or c.get('_baseplate_applied'):
+        return c
+    if isinstance(thickness, bool) or not isinstance(thickness, (int, float)) or not 0 < thickness <= 0.02:
+        raise ValueError('baseplate_thickness is in METRES and at most 2 cm (a Lego baseplate is 0.0032)')
+    c['table_top_z'] = c['table_top_z'] + thickness
+    c['table_center'] = [c['table_center'][0], c['table_center'][1], c['table_center'][2] + thickness]
+    c['_baseplate_applied'] = True
+    return c
+
+
+def check_tool_geometry(c):
+    """The fingertips must stay above the surface at the grasp, and above the bottom of the brick, or the tool
+    (the printed tips) would crash into the table, the baseplate or the brick below."""
+    below = c.get('fingertip_below_tcp')
+    if below is None:
+        return
+    if isinstance(below, bool) or not isinstance(below, (int, float)) or not 0 <= below <= 0.05:
+        raise ValueError('fingertip_below_tcp is in METRES (how far the lowest point of the tips is below the hand '
+                         'point), between 0 and 0.05')
+    margin = c.get('fingertip_table_margin', 0.001)
+    if c['grasp_tcp_height'] < below + margin - 1e-9:
+        raise ValueError(f'grasp_tcp_height {c["grasp_tcp_height"] * 1000:.1f} mm is too low for tips that reach '
+                         f'{below * 1000:.1f} mm below the hand point: they would end {(below + margin - c["grasp_tcp_height"]) * 1000:.1f} mm '
+                         'below the bottom of the brick, into the table, baseplate or the brick underneath. Raise '
+                         f'grasp_tcp_height to at least {(below + margin) * 1000:.1f} mm (about {(below + 0.003) * 1000:.0f} mm is good).')
 
 
 def check_tcp_correction(c):
@@ -282,7 +318,7 @@ def check_tcp_correction(c):
 
 def jaw_clearance_note(c):
     """One line about how tight the open hand is around the brick, or None when it is roomy (>= 2 mm a side)."""
-    side = (c['open_width'] - c['block_size'][1]) / 2
+    side = (c['open_width'] - c.get('hand_zero_width', 0.0) - c['block_size'][1]) / 2
     if side >= 0.002:
         return None
     return (f'NOTE: the hand opens to {c["open_width"] * 1000:.0f} mm and closes to {c["grasp_width"] * 1000:.0f} mm for a '
@@ -378,12 +414,13 @@ def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_
 
 
 class Mission:
-    def __init__(self, node, c, plan, buffer, inspect, given, place=None):
+    def __init__(self, node, c, plan, buffer, inspect, given, place=None, on_placed=None):
         from visualization_msgs.msg import Marker
         import smooth_motion
         from smooth_motion import Mover
         self.node, self.c, self.plan, self.inspect, self.given = node, c, plan, inspect, given
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
+        self.on_placed = on_placed    # called once the brick is released (the pallet remembers its slot)
         self.nudge = np.zeros(4)                                    # total dx, dy (m), dyaw (deg), dz (m)
         self.grasp_hand_yaw_deg = None
         smooth_motion.MAX_JOINT_SWING = float(c['max_joint_swing'])  # refuse big turns of joints 1-6
@@ -513,6 +550,8 @@ class Mission:
         self.mover.hand()                       # open: the brick stays where it is
         self.mover.detach_block()
         self.say('Brick released')
+        if self.on_placed is not None:
+            self.on_placed()                    # before the back-off: the slot is taken even if the back-off fails
         self.go('Back off straight up', where['above'], where['yaw'])
 
     def run(self):
@@ -560,6 +599,11 @@ def main():
                      help='Top-face centre of the brick where it should end up, in camera_color_optical_frame')
     put.add_argument('--place-offset', nargs=2, type=float, metavar=('DX', 'DY'),
                      help='Put it down this far from the pick position (fr3_link0 axes, metres), e.g. 0 0.05')
+    put.add_argument('--pallet', action='store_true',
+                     help='Put the brick in the next free slot of the pallet grid (config/pallet.yaml)')
+    parser.add_argument('--pallet-file', metavar='FILE', help='Pallet file (default: pallet.yaml next to --config)')
+    parser.add_argument('--pallet-slot', type=int, metavar='N',
+                        help='With --pallet: use slot N (from 1) instead of the next free one')
     parser.add_argument('--camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
                         help='Orientation of the brick to pick in the camera frame (xyzw)')
     parser.add_argument('--place-camera-quat', nargs=4, type=float, metavar=('X', 'Y', 'Z', 'W'),
@@ -640,7 +684,14 @@ def main():
             raise ValueError('--place-layers auto needs --place-camera-xyz')
         if args.place is not None and len(args.place) == 3:
             raise ValueError('--place-layers sets the height: leave out the Z of --place')
+    if (args.pallet_file or args.pallet_slot is not None) and not args.pallet:
+        raise ValueError('--pallet-file and --pallet-slot need --pallet')
+    if args.pallet and (args.place_yaw is not None or args.place_layers is not None):
+        raise ValueError('With --pallet the angle and the layer of the placed brick come from the pallet file '
+                         '(yaw_deg, layer): leave out --place-yaw and --place-layers')
     c = yaml.safe_load(open(args.config, encoding='utf-8'))
+    apply_baseplate(c)
+    check_tool_geometry(c)
     check_tcp_correction(c)
     yaw = None
     if args.quat:
@@ -716,7 +767,7 @@ def main():
             given = {'camera_xyz': args.camera_xyz, 'base_xy': [x, y], 'yaw_deg': math.degrees(plan['yaw']),
                      **height_info}
         validate(task_config(c, plan))
-        place = None
+        place, on_placed, pal, pal_state, pal_index, pallet_notes = None, None, None, None, None, []
         stack_z = layer_centre_z(c, args.place_layers) if isinstance(args.place_layers, int) and args.place_layers > 1 else None
         if args.place is not None:
             place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else stack_z,
@@ -733,11 +784,35 @@ def main():
             place = {'offset': tuple(args.place_offset), 'xy': None, 'z': stack_z, 'is_tcp': False,
                      'yaw': wrap_line_angle(math.radians(args.place_yaw)) if args.place_yaw is not None else None}
             check_offset_place(c, plan, place)
+        elif args.pallet:
+            import pallet as pl
+            pallet_file = Path(args.pallet_file) if args.pallet_file else Path(args.config).resolve().with_name('pallet.yaml')
+            pal = pl.load_pallet(pallet_file)
+            pallet_notes = pl.check_pallet(pal, c)
+            pal_state = pl.PalletState(pl.state_path(pal, pallet_file))
+            pal_index = pl.choose_slot(pal, pal_state, args.pallet_slot)
+            pal_x, pal_y = pl.slot_xy(pal, pal_index)
+            place = {'xy': (pal_x, pal_y), 'z': layer_centre_z(c, pal['layer']) if pal['layer'] > 1 else None,
+                     'is_tcp': False, 'yaw': wrap_line_angle(math.radians(pal['yaw_deg']))}
+            given['pallet_slot'] = pal_index + 1
+
+            def record_slot():
+                try:
+                    pal_state.mark(pal_index, 'placed', (pal_x, pal_y))
+                    following = pal_state.next_free(pal)
+                    print(f'[pallet] {pl.slot_label(pal, pal_index)} is filled. ' + (
+                        f'Next: {pl.slot_label(pal, following)} at x={pl.slot_xy(pal, following)[0]:.3f} '
+                        f'y={pl.slot_xy(pal, following)[1]:.3f}' if following is not None else 'The pallet is full.'),
+                          flush=True)
+                except OSError as problem:
+                    print(f'WARNING: could not save the pallet state ({problem}). Record it by hand: '
+                          f'pallet_tool.py mark {pal_index + 1}', flush=True)
+            on_placed = record_slot
         if place is not None:                         # a bad place pose must not leave a brick in the hand
             validate(task_config(c, resolve_place(c, plan, place)))
 
         inspect = args.inspect or (not simulated and not args.no_inspect)
-        mission = Mission(node, c, plan, buffer, inspect, given, place)
+        mission = Mission(node, c, plan, buffer, inspect, given, place, on_placed)
         centre = plan['centre']
         print(f'Pick pose: x={centre[0]:.3f} y={centre[1]:.3f} z={centre[2]:.4f}  yaw={math.degrees(plan["yaw"]):.0f} deg\n'
               f'Hand will hover at z={plan["above"][2]:.3f}, stop at z={plan["inspect"][2]:.3f} '
@@ -747,6 +822,11 @@ def main():
             where = mission.place_plan()
             print(f'Place pose: x={where["centre"][0]:.3f} y={where["centre"][1]:.3f} z={where["centre"][2]:.4f}  '
                   f'yaw={math.degrees(where["yaw"]):.0f} deg   (release with the hand at z={where["release"][2]:.4f})')
+        if pal is not None:
+            print(f'Pallet: {pl.slot_label(pal, pal_index)}  x={pal_x:.3f} y={pal_y:.3f}  yaw {pal["yaw_deg"]:.0f} deg')
+            print('\n'.join(pl.render(pal, pal_state, pal_index) + pallet_notes))
+        if c.get('_baseplate_applied'):
+            print(f'Baseplate: bricks stand {c["baseplate_thickness"] * 1000:.1f} mm above the table surface.')
         note = jaw_clearance_note(c)
         if note:
             print(note)

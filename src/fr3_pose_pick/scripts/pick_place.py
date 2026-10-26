@@ -40,12 +40,16 @@ def validate(c):
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not low < v <= high:
             raise ValueError(f'{key} must be in ({low}, {high}]')
     needed = c.get('min_open_clearance', 0.005)
-    if c['block_size'][1] + needed > c['open_width'] + 1e-9:
-        raise ValueError(f'The open hand ({c["open_width"] * 1000:.1f} mm) needs at least {needed * 1000:.1f} mm '
-                         f'more than the brick short side ({c["block_size"][1] * 1000:.1f} mm) '
-                         '(min_open_clearance in the config)')
+    zero = c.get('hand_zero_width', 0.0)           # what the hand reads when the (printed) tips touch each other
+    if c['block_size'][1] + zero + needed > c['open_width'] + 1e-9:
+        raise ValueError(f'The open hand ({c["open_width"] * 1000:.1f} mm, of which {zero * 1000:.1f} mm is the tips) '
+                         f'needs at least {needed * 1000:.1f} mm more than the brick short side '
+                         f'({c["block_size"][1] * 1000:.1f} mm) (min_open_clearance in the config)')
     if c['grasp_width'] >= c['open_width']:
         raise ValueError('grasp_width must be smaller than open_width')
+    if not zero <= c['grasp_width']:
+        raise ValueError(f'grasp_width {c["grasp_width"] * 1000:.1f} mm is below the {zero * 1000:.1f} mm the hand reads '
+                         'with the tips touching (hand_zero_width): it could never close that far')
     top = c['table_center'][2] + c['table_size'][2] / 2
     for key in ('pick', 'place'):
         if c[key][2] - c['block_size'][2] / 2 < top - 0.001:

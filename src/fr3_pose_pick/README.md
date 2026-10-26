@@ -167,6 +167,64 @@ Limits you should know:
 - Fingertips reach about 9 mm below the hand point, so they grip the upper part of the brick and stay clear of
   the brick below.
 
+## New (printed) gripper tips: measure, then calibrate with the inspection stop
+
+The widths, the fingertip height and the stored grasp centring all belong to the tips they were measured with.
+After a change of tips:
+1. **Reset the centring** (it was measured for the old tips):
+   `sed -i 's/^tcp_correction_hand:.*/tcp_correction_hand: [0.0, 0.0]/' src/fr3_pose_pick/config/pose_pick.yaml`
+2. **How far the tips reach below the hand point** (`fingertip_below_tcp`, metres): measure from the hand's
+   mounting flange face to the lowest point of the tip, and subtract 103.4 mm (where the hand point sits). The
+   stock tips are about 9 mm. `grasp_tcp_height` must be at least this plus the margin (about 3 mm more is good):
+   the script refuses to start otherwise, because the tips would go through the bottom of the brick into the
+   table, baseplate or the brick underneath.
+3. **What the hand reads with the tips touching** (`hand_zero_width`): with nothing between the fingers run
+   `ros2 run fr3_pose_pick measure_hand_zero.py` (type YES; it closes gently at 5 N, then opens again). It prints
+   `hand_zero_width`, `open_width` and `grasp_width` for the config. Printed tips of 3 mm each read 6 mm, and
+   the 16 mm brick is then gripped at 22 mm, not 16.
+4. **Size of one tip** for the pallet check: `finger_tip_thickness` (the way the jaws close) and
+   `finger_tip_width` (along the brick's long side), from calipers. The pallet check uses them to refuse
+   spacings where a tip would hit the neighbouring brick when a brick is released.
+5. **Centre the grasp**: pick with the inspection stop and nudge `x`, `y`, `z`, `yaw` until the tips look
+   centred, `ok`. After 3 to 5 picks:
+   `python3 src/fr3_pose_pick/scripts/measure_grasp_offset.py --last 5 --apply src/fr3_pose_pick/config/pose_pick.yaml`
+
+## Lego baseplate on the table
+
+A flat baseplate raises the surface the bricks stand on. Set `baseplate_thickness` (a standard Lego baseplate is
+0.0032 m): the brick heights, the layers and the table in the planning scene all move up by it. Also set
+`fingertip_table_margin: 0.0025` (the plate's studs stand 1.7 mm above its surface). Bricks seat on the studs, so
+a brick placed 2 mm (`place_margin`) above its seated height drops onto them: set `place_margin: 0.0` to just
+touch them, and expect a seated brick to need a firm pull to lift off again.
+
+## Pallet: bricks placed one after the other in a grid, each with a gap
+
+`config/pallet.yaml` describes the grid (all in metres, 4 cm = 0.04): `origin` (centre of slot 1), `step_along`
+(from one slot to the next in a row), `step_row` (from one row to the next), `per_row`, `rows`, `yaw_deg`,
+`layer`, and optionally `area` (the baseplate edges). The file ships as a template with `needs_setup: true`;
+the robot refuses to use it until you put in the real position of slot 1 (move the hand over its centre and read
+`ros2 run tf2_ros tf2_echo fr3_link0 fr3_hand_tcp`) and set `needs_setup: false`.
+
+```bash
+python3 src/fr3_pose_pick/scripts/pallet_tool.py check     # window, gaps between bricks, room for the finger tips
+python3 src/fr3_pose_pick/scripts/pallet_tool.py status    # the grid: # filled  > next  . free
+ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+     --camera-xyz X Y Z --camera-angle A --pallet                  # pick what your teammate gave, place in the next slot
+```
+- Every run places ONE brick in the next free slot (a row, then the next row) and records it **as soon as the hand
+  has let go**, so the next run goes to the next slot by itself, even if the back-off after the release fails.
+- The state is kept in `config/pallet_state.json`, next to the pallet file (independent of the folder you run
+  from). A damaged state file stops the run instead of starting again at slot 1.
+- `--pallet-slot N` uses slot N (refused when it already holds a brick). `pallet_tool.py` can `mark N` a slot filled
+  by hand, `unmark N` one you emptied, `skip` the next one (a bad spot) and `reset` everything.
+- The pick can be anything: a camera point from your teammate (any height, stacks included), or `--pose`.
+- Gaps: the check refuses a pallet whose bricks would be closer than `min_gap` (4 mm). Across the brick's width the
+  gap must also leave room for a finger tip (`finger_tip_thickness`) next to the brick being released.
+- **Accuracy:** the jaws centre the brick across its width, but not along its length. The placed brick lands
+  at its slot plus however far off-centre it sat in the fingers along its long side: the pick error along the
+  brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
+  as good as that.
+
 ## Safety: one robot stack per ROS domain
 
 A simulation and the real robot must never run in the same ROS domain (a command can reach either).

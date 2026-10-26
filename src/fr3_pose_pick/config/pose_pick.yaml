@@ -22,6 +22,21 @@ max_hover_z: 0.55               # highest the hand may go while hovering above t
 # TCP lower than ~10 mm above the table would put them in the table.
 grasp_tcp_height: 0.012
 min_tcp_above_table: 0.010
+# The gripper TIPS: how far the lowest point of the tips is below the hand point (fr3_hand_tcp), and how much
+# room to keep above the surface. The grasp is refused if grasp_tcp_height is lower than the sum (the tips
+# would go through the brick's bottom into the table / baseplate / brick below). Measure it for the printed tips.
+fingertip_below_tcp: 0.009      # stock tips: about 9 mm
+fingertip_table_margin: 0.001   # use 0.0025 on a Lego baseplate (its studs stand 1.7 mm above its surface)
+# Size of ONE finger tip, used to check that the tip fits between bricks on the pallet (null = not checked).
+finger_tip_thickness: null      # metres, in the direction the jaws close
+finger_tip_width: null          # metres, along the brick's long side
+# What the hand reads (total opening) when the tips touch each other with nothing between them. 0 for the
+# stock tips; for printed tips measure it with measure_hand_zero.py. open_width / grasp_width below include it.
+hand_zero_width: 0.0
+# A flat baseplate lying on the table raises the surface the bricks stand on by this much (metres; a standard
+# Lego baseplate is 0.0032). The bricks' bottoms then rest on the plate, and the table in the planning scene
+# is raised with it. 0 = bricks stand directly on the table.
+baseplate_thickness: 0.0
 clearance: 0.10                 # hover / lift height above the grasp
 place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
