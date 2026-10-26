@@ -40,7 +40,7 @@ def test_fingers_never_planned_into_the_table():
         pp.plan_pick(CONFIG, 0.4, 0.0, z=CONFIG['table_top_z'] - 0.01)
     with pytest.raises(ValueError, match='below the table'):
         pp.plan_pick(CONFIG, 0.4, 0.0, z=CONFIG['table_top_z'] + 0.005, pose_is_tcp=True)
-    strict = dict(CONFIG, min_tcp_above_table=0.015)       # fingertip rule on its own
+    strict = dict(CONFIG, min_tcp_above_table=0.025)       # fingertip rule on its own
     with pytest.raises(ValueError, match='fingertips'):
         pp.plan_pick(strict, 0.4, 0.0)
 

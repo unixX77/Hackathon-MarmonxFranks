@@ -24,7 +24,7 @@ def load(name):
 pl = load('pallet')
 pp = load('pose_pick')
 CONFIG = yaml.safe_load(open(ROOT / 'config' / 'pose_pick.yaml', encoding='utf-8'))
-STOCK = dict(CONFIG, baseplate_thickness=0.0, fingertip_table_margin=0.001)     # no baseplate, stock margin
+STOCK = dict(CONFIG, baseplate_thickness=0.0, fingertip_table_margin=0.001, grasp_tcp_height=0.012)     # no baseplate, stock margin
 GOOD = {'origin': [0.36, -0.10], 'step_along': [0.04, 0.0], 'step_row': [0.0, -0.04], 'per_row': 5, 'rows': 3}
 
 

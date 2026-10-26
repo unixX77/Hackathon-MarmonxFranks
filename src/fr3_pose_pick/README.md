@@ -231,6 +231,18 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
   as good as that.
 
+## Locked settings (2026-10-26, real robot, new thin tips, two baseplates)
+
+These came from a real, successful pick and place and are stored in `config/pose_pick.yaml`; do not re-tune them by hand:
+
+    baseplate_thickness: 0.0032      the plates under the bricks
+    grasp_tcp_height:    0.017       tips touch at hand z = -0.0005, the grasp stops at +0.0002 (was 0.012: +5 mm)
+    tcp_correction_hand: [-0.0100, 0.0040]   centring along / across the long side (y -1 mm more than before)
+    place_margin:        0.002       unchanged; the release height follows grasp_tcp_height, so the place is +5 mm too
+
+The pick was accepted as is. The place (release z = +0.0022 after the +5 mm) still needs a small adjustment: correct it at
+the `place correction>` stop, then change `place_margin` (a permanent z change at the place only).
+
 ## The hand stops on the way down: it is never closed on, and the brick is never released in the air
 
 The last move before the grasp (and before the release) is a straight vertical line. If the hand ends it more than

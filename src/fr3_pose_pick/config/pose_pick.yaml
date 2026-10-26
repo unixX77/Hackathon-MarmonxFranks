@@ -20,7 +20,7 @@ max_hover_z: 0.55               # highest the hand may go while hovering above t
 # ---- Grasp ------------------------------------------------------------------------------
 # TCP height above the table at the grasp. The fingertip ends are ~9 mm below the TCP, so a
 # TCP lower than ~10 mm above the table would put them in the table.
-grasp_tcp_height: 0.012
+grasp_tcp_height: 0.017          # LOCKED 2026-10-26 on the baseplate with the new tips: tips touch at z=-0.0005, grasp at +0.0002; the place height follows it
 min_tcp_above_table: 0.010
 # The gripper TIPS: how far the lowest point of the tips is below the hand point (fr3_hand_tcp), and how much
 # room to keep above the surface. The grasp is refused if grasp_tcp_height is lower than the sum (the tips
@@ -71,7 +71,7 @@ blocked_sideways: 0.0035
 # all across, so the across value is the rough one. Keep using the inspection stop, then refine with
 #   measure_grasp_offset.py --last 5 --apply <this file>
 # (the corrections you still type are added to this value). The earlier values are in git history.
-tcp_correction_hand: [-0.0100, 0.0030]
+tcp_correction_hand: [-0.0100, 0.0040]   # LOCKED 2026-10-26 (new thin tips, real pick: y -1 mm at the stop)
 grasp_force: 10.0
 gripper_speed: 0.02
 # Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the
