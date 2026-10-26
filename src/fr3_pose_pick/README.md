@@ -231,6 +231,30 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
   as good as that.
 
+## Autonomous version: `pose_pick_auto.py` (no questions, no corrections)
+
+`pose_pick.py` stays the interactive one (inspection stops, step mode, corrections). `pose_pick_auto.py` is a separate script
+that goes and picks and places on its own. It does not change `pose_pick.py`: it imports its planning and motion code and the
+same config, so every locked value (grasp height, centring, place height, grasp force, baseplate) is used as it is.
+
+    ros2 run fr3_pose_pick pose_pick_auto.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+        --camera-xyz X Y Z --camera-angle A --place-offset 0 0.05          # same options as pose_pick.py, plus --countdown 3..60
+
+- **No questions.** "Type GO" becomes a countdown (default 5 s; Ctrl+C or the e-stop cancels). The inspection stops, step mode
+  and correction prompts are always off, `--step`, `--inspect` and `--place-inspect` are refused, and a prompt that still
+  appears is never answered: the run stops before it moves.
+- **Same safety.** The hand must start pointing down, bad poses and geometry are refused, every move is compared with where the
+  hand really is (stop above 10 mm), and a downward move that ends short of its target never closes the hand or releases the
+  brick in the air. It still passes the inspection height on the way down, only without stopping.
+- **A failure stops and explains** (exit code 1). The arm is not moved to fix it, the hand is not opened or closed by itself,
+  and a brick already in the hand stays there.
+- **Own log:** every run (done or stopped, with the reason) goes to `pose_pick_auto_log.json` (`auto_log` in the config), never to
+  `pose_pick_offsets.json`, so these runs do not dilute `measure_grasp_offset.py`.
+- With `--camera-xyz` the hand pose of the picture is "the arm right now": run it right after the picture with the arm still,
+  or pass `--ee-pose X Y Z QX QY QZ QW`. One brick per run; with `--pallet` each run takes the next free slot.
+- After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
+  the install list of `CMakeLists.txt`.
+
 ## Locked settings (2026-10-26, real robot, new thin tips, two baseplates)
 
 These came from a real, successful pick and place and are stored in `config/pose_pick.yaml`; do not re-tune them by hand:

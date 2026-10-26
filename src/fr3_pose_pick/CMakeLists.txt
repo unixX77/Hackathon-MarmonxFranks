@@ -1,7 +1,7 @@
 cmake_minimum_required(VERSION 3.8)
 project(fr3_pose_pick)
 find_package(ament_cmake REQUIRED)
-install(PROGRAMS scripts/pose_pick.py scripts/camera_frame.py scripts/measure_grasp_offset.py scripts/pallet.py scripts/pallet_tool.py scripts/measure_hand_zero.py scripts/sim_gripper.py scripts/sim_arm_controller.sh scripts/smooth_motion.py scripts/trajectory_smoothing.py scripts/pick_place.py scripts/spawn_scene.py DESTINATION lib/${PROJECT_NAME})
+install(PROGRAMS scripts/pose_pick.py scripts/pose_pick_auto.py scripts/camera_frame.py scripts/measure_grasp_offset.py scripts/pallet.py scripts/pallet_tool.py scripts/measure_hand_zero.py scripts/sim_gripper.py scripts/sim_arm_controller.sh scripts/smooth_motion.py scripts/trajectory_smoothing.py scripts/pick_place.py scripts/spawn_scene.py DESTINATION lib/${PROJECT_NAME})
 install(DIRECTORY config launch DESTINATION share/${PROJECT_NAME})
 install(FILES README.md DESTINATION share/${PROJECT_NAME})
 ament_package()
