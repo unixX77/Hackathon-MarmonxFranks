@@ -117,3 +117,32 @@ these poses. Neighboring frames within each short recording may be nearly
 identical; sampling can avoid overweighting repeated views. SDK playback may
 require running from a regular desktop terminal rather than a restricted
 sandbox. This tool needs the installed SDK version with `.db3` playback support.
+
+## Brick colour dataset
+
+The labelled single-brick dataset that trains `classifier/colour_model.py`
+(`data/brick_dataset_extracted`) is built with these scripts; the full workflow is in
+[`BRICK_EXTRACTION.md`](BRICK_EXTRACTION.md).
+
+| Script | Purpose |
+|---|---|
+| `capture_d435.py --rgb-only --output <folder>` | save timestamped RGB images only, directly into a label folder |
+| `extract_brick_dataset.py` | labelled single-brick crops with SAM3 (labels from the folder names) |
+| `correct_extracted_bricks.py` | fix ambiguous extractions with four-point polygons |
+| `review_brick_boxes.py` | draw brick boxes, approve crops, or skip images |
+| `group_brick_dataset.py` | assign capture groups / splits without moving images |
+| `suggest_brick_lighting.py` | draft lighting annotations for review |
+| `annotate_brick_lighting.py` | review crops and set lighting categories |
+
+## Click-to-XYZ checks
+
+Tools to read camera-frame XYZ (`camera_color_optical_frame`, metres) for clicked pixels,
+used to check the pipeline's brick poses by hand:
+
+| Script | Purpose |
+|---|---|
+| `click_to_xyz.py` | click pixels on a saved RGB-D frame |
+| `live_click_to_xyz.py` | click the live D435 feed |
+| `live_click_to_xyz_mediandepth.py` | live, median depth around the click |
+| `live_click_to_xyz_rayintersect.py` | live, top-face XYZ by ray-plane intersection |
+| `compare_click_xyz.py` | compare median-depth, ray-plane and SAM3 top-face XYZ on one frame |

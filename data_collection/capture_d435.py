@@ -76,6 +76,8 @@ def main():
     parser.add_argument("--fps", type=int, help="Default: stream-fps in the settings JSON")
     parser.add_argument("--serial", help="Serial number of the camera to use (default: first found)")
     parser.add_argument("--output", type=Path, default=ROOT / "data" / "captures")
+    parser.add_argument("--rgb-only", action="store_true",
+                        help="Save only timestamped RGB PNGs directly in --output (no session subfolders)")
     args = parser.parse_args()
 
     settings_text = args.settings.read_text()
@@ -96,7 +98,7 @@ def main():
         raise RuntimeError(f"Cannot start {args.rgb_width}x{args.rgb_height} colour + {depth_w}x{depth_h} "
                            f"depth at {fps} fps ({error}). Check the USB 3 connection or the modes.") from error
 
-    session = args.output / datetime.now().strftime("%Y%m%d_%H%M%S")
+    session = args.output if args.rgb_only else args.output / datetime.now().strftime("%Y%m%d_%H%M%S")
     window = "D435 capture - Enter: save | q: quit"
     count = 0
     try:
@@ -111,8 +113,9 @@ def main():
         info.update(settings_file=str(args.settings.resolve()), applied_options=options_snapshot(device),
                     fps=fps, post_processing="none; SDK alignment to colour only", depth_invalid_value=0,
                     camera_coordinate_convention="x right, y down, z forward; metres")
-        session.mkdir(parents=True)
-        (session / "d435_settings.json").write_text(settings_text)
+        session.mkdir(parents=True, exist_ok=args.rgb_only)
+        if not args.rgb_only:
+            (session / "d435_settings.json").write_text(settings_text)
         print(f"Depth scale {depth_scale} m, saving to {session.resolve()}")
 
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
@@ -128,12 +131,13 @@ def main():
                 # Saved depth is on the colour grid, so these (not depth_intrinsics) describe it.
                 info["aligned_depth_intrinsics"] = intrinsics_to_dict(
                     depth_frame.profile.as_video_stream_profile().get_intrinsics())
-                (session / "camera_info.json").write_text(json.dumps(info, indent=2))
+                if not args.rgb_only:
+                    (session / "camera_info.json").write_text(json.dumps(info, indent=2))
 
             depth_vis = cv2.applyColorMap(
                 cv2.convertScaleAbs(depth, alpha=255.0 / (1.0 / depth_scale)), cv2.COLORMAP_JET)
             depth_vis[depth == 0] = 0
-            preview = np.hstack([color, depth_vis])
+            preview = color.copy() if args.rgb_only else np.hstack([color, depth_vis])
             cv2.putText(preview, f"Enter: save | q: quit | saved: {count}", (20, 50),
                         cv2.FONT_HERSHEY_SIMPLEX, 1.5, (0, 255, 0), 3)
             cv2.imshow(window, preview)
@@ -141,6 +145,13 @@ def main():
             if key in (ord("q"), ord("Q"), 27) or cv2.getWindowProperty(window, cv2.WND_PROP_VISIBLE) < 1:
                 break
             if key in (10, 13):
+                if args.rgb_only:
+                    path = session / (datetime.now().strftime("rgb_%Y%m%d_%H%M%S_%f") + ".png")
+                    if not cv2.imwrite(str(path), color):
+                        raise RuntimeError(f"Could not save {path}")
+                    count += 1
+                    print(f"Saved {path}")
+                    continue
                 name = f"{count:06d}"
                 for folder in ("rgb", "depth", "meta"):
                     (session / folder).mkdir(exist_ok=True)
