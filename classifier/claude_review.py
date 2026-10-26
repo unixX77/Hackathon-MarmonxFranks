@@ -1,6 +1,7 @@
-"""Claude Code review of a final pipeline result: fix wrong colours and drop wrong masks.
+"""Claude Code (or Codex) review of a final pipeline result: fix wrong colours and drop wrong masks.
 
-Runs the `claude` CLI headless (your Claude Code login, no API key) on images written to
+Runs the `claude` CLI headless (your Claude Code login, no API key), or with --backend codex
+the `codex exec` CLI (your Codex login), on images written to
 <final>/claude_review/: the raw frame, an overview with every final brick numbered, and
 close-ups. Classifier labels are not shown, so Claude judges each brick blind. For each
 brick it returns a colour, a confidence and whether the mask is a real top-layer brick.
@@ -36,7 +37,7 @@ import numpy as np
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / 'classifier'))
 sys.path.insert(0, str(ROOT / 'perception/sam3_detection'))
-from claude_second_opinion import BAD_COLOURS, COLOURS, SYSTEM, close_up, label, outline, overview
+from claude_second_opinion import BAD_COLOURS, COLOURS, SYSTEM, close_up, codex_binary, label, outline, overview
 
 MASK_PROBLEMS = ['not_a_brick', 'not_top_layer', 'merged']
 TILE = 200
@@ -122,6 +123,31 @@ def ask_claude(folder, bricks, model, effort, timeout):
     return result['structured_output'], meta
 
 
+def ask_codex(folder, bricks, model, effort, timeout):
+    """Same review through the Codex CLI (`codex exec`, your Codex login): the images are
+    attached instead of read with a tool, the answer format is enforced by --output-schema."""
+    images = ['rgb.png', 'overview.png'] + sorted(p.name for p in folder.glob('closeups_*.png'))
+    prompt = PROMPT.format(system=SYSTEM, sheets=', '.join(images[2:]), count=len(bricks),
+                           ids=', '.join(str(b['id']) for b in bricks))
+    prompt = prompt.replace('Use the Read tool on every image in this directory before answering:',
+                            'The attached images are, in order:')
+    prompt += '\nAnswer only from the attached images; do not run commands.'
+    schema = folder / 'codex_schema.json'
+    schema.write_text(json.dumps(RESPONSE_SCHEMA))
+    answer = folder / 'codex_answer.json'
+    answer.unlink(missing_ok=True)
+    command = [codex_binary(), 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only',
+               '--cd', str(folder), '--output-schema', str(schema), '--output-last-message', str(answer),
+               '-c', f'model_reasoning_effort="{"high" if effort in ("xhigh", "max") else effort}"']
+    if model:
+        command += ['--model', model]
+    command += [f'--image={folder / name}' for name in images] + ['-']
+    run = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=timeout)
+    if run.returncode != 0 or not answer.is_file():
+        raise RuntimeError(f'codex exec exited {run.returncode}: {run.stderr.strip()[-500:]}')
+    return json.loads(answer.read_text()), {'model': f"codex {model or '(default model)'}"}
+
+
 def apply(result, instance, answers):
     """Return reviewed copies of the result and instance mask, plus the list of changes."""
     from segment_lego_sam3_single_prompt import NAMES
@@ -185,8 +211,12 @@ def changes_view(bgr, bricks, changes):
     return out
 
 
-def review(final_folder, model='opus', effort='medium', timeout=900):
-    """Review a final result folder; returns the reviewed bricks.json path, or None."""
+def review(final_folder, model=None, effort='medium', timeout=900, backend='claude'):
+    """Review a final result folder; returns the reviewed bricks.json path, or None.
+    backend 'claude' runs `claude -p` (model default opus); 'codex' runs `codex exec`
+    (model default: your Codex config). Results are stored under the same keys either way."""
+    name = 'Codex' if backend == 'codex' else 'Claude'
+    model = model or (None if backend == 'codex' else 'opus')
     from top_layer_bricks import final_view, titled, write_poses_csv
     final_folder = Path(final_folder)
     result = json.loads((final_folder / 'bricks.json').read_text())
@@ -207,8 +237,12 @@ def review(final_folder, model='opus', effort='medium', timeout=900):
     cv2.imwrite(str(folder / 'overview.png'), overview(bgr, bricks))
     for k, sheet in enumerate(contact_sheets(bgr, bricks), 1):
         cv2.imwrite(str(folder / f'closeups_{k}.png'), sheet)
-    print(f'Claude review: checking {len(bricks)} bricks with claude -p ({model}, effort {effort})...', flush=True)
-    answers, meta = ask_claude(folder, bricks, model, effort, timeout)
+    tool = 'codex exec' if backend == 'codex' else 'claude -p'
+    print(f'{name} review: checking {len(bricks)} bricks with {tool} ({model or "default model"}, '
+          f'effort {effort})...', flush=True)
+    ask = ask_codex if backend == 'codex' else ask_claude
+    answers, meta = ask(folder, bricks, model, effort, timeout)
+    meta['backend'] = backend
     (folder / 'review.json').write_text(json.dumps({**meta, **answers}, indent=2))
 
     reviewed, reviewed_instance, changes = apply(result, instance, answers)
@@ -226,9 +260,9 @@ def review(final_folder, model='opus', effort='medium', timeout=900):
         raise ValueError('Expected the six-panel preview')
     recoloured = sum(c['action'] == 'recoloured' for c in changes)
     column = np.vstack([
-        titled(changes_view(bgr, bricks, changes), f'7 Claude changes: {recoloured} recoloured, '
+        titled(changes_view(bgr, bricks, changes), f'7 {name} changes: {recoloured} recoloured, '
                                                    f'{len(changes) - recoloured} removed, {len(answers["missed"])} missed'),
-        titled(overlay, f"8 after Claude review: {reviewed['good']} good, {reviewed['bad']} bad")])
+        titled(overlay, f"8 after {name} review: {reviewed['good']} good, {reviewed['bad']} bad")])
     cv2.imwrite(str(final_folder / 'preview.png'), np.hstack([preview, column]))
     cv2.imwrite(str(final_folder / 'overlay_reviewed.png'), overlay)
     cv2.imwrite(str(final_folder / 'final_instances_reviewed.png'), reviewed_instance)
@@ -237,7 +271,7 @@ def review(final_folder, model='opus', effort='medium', timeout=900):
     write_poses_csv(final_folder / 'poses_reviewed.csv', final)
 
     cost = f", ${meta['total_cost_usd']:.2f}" if meta.get('total_cost_usd') else ''
-    print(f"Claude review ({meta['model']}{cost}): {recoloured} recoloured, "
+    print(f"{name} review ({meta['model']}{cost}): {recoloured} recoloured, "
           f"{len(changes) - recoloured} removed, {len(answers['missed'])} missed")
     for c in changes:
         what = f"{c['from']} -> {c['to']}" if c['action'] == 'recoloured' else f"removed ({c['reason']})"
@@ -250,11 +284,13 @@ def review(final_folder, model='opus', effort='medium', timeout=900):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('final_folder', type=Path, help='03_final/.../<frame> folder containing bricks.json')
-    parser.add_argument('--model', default='opus', help='claude CLI model alias or full name')
+    parser.add_argument('--backend', default='claude', choices=['claude', 'codex'],
+                        help='claude: `claude -p` (Claude Code login); codex: `codex exec` (Codex login)')
+    parser.add_argument('--model', help='model name; default opus for claude, your Codex config for codex')
     parser.add_argument('--effort', default='medium', choices=['low', 'medium', 'high', 'xhigh', 'max'])
     parser.add_argument('--timeout', type=int, default=900, help='seconds before the review is abandoned')
     args = parser.parse_args()
-    review(args.final_folder.resolve(), args.model, args.effort, args.timeout)
+    review(args.final_folder.resolve(), args.model, args.effort, args.timeout, args.backend)
 
 
 if __name__ == '__main__':

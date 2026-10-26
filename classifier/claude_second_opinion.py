@@ -1,27 +1,37 @@
-"""Second opinion on brick colours from Claude (vision), after the standalone classifier.
+"""Second opinion on brick colours from a vision model, after the standalone classifier.
 
-Claude sees an overview of the frame with every final brick numbered (so colours can be
+The model sees an overview of the frame with every final brick numbered (so colours can be
 compared under the same lighting) and a close-up of each brick. Classifier labels are not
 shown. For each brick it returns one of the five colours (or "unsure"), a confidence and
 flags. Geometry and poses are never changed.
 
-Merge rule: agreement changes nothing. When Claude disagrees with medium or high confidence,
-the brick keeps the classifier's colour but its colour confidence becomes "low" and Claude's
-answer is recorded beside it, so the robot side can skip or re-check that brick.
+Backends (--backend):
+  claude  Claude via the Anthropic API. Needs `pip install anthropic` and credentials
+          (ANTHROPIC_API_KEY or `ant auth login`); billed per use.
+  codex   OpenAI Codex CLI (`codex exec`) under your ChatGPT/Codex login. Uses $CODEX_BIN,
+          `codex` on PATH, or the binary bundled with the VS Code ChatGPT extension.
+
+Merge rule: agreement changes nothing. When the model disagrees with medium or high
+confidence, the brick keeps the classifier's colour but its colour confidence becomes "low"
+and the model's answer is recorded beside it, so the robot side can skip or re-check it.
 
 Writes into the final result folder:
   bricks_second_opinion.json  bricks.json plus a `second_opinion` entry per brick
   second_opinion.png          overview: green = agree, red = disagree, grey = unsure
-  second_opinion_raw.json     Claude's raw answer
+  second_opinion_raw.json     the model's raw answer
 
-Needs `pip install anthropic` in the environment and credentials (ANTHROPIC_API_KEY or
-`ant auth login`). Run on an existing result:
-  python classifier/claude_second_opinion.py <run>/03_final/capture/<recording>/<frame>
+Run on an existing result:
+  python classifier/claude_second_opinion.py <run>/03_final/capture/<recording>/<frame> --backend codex
 """
 
 import argparse
 import base64
+import glob
 import json
+import os
+import shutil
+import subprocess
+import tempfile
 from pathlib import Path
 
 import cv2
@@ -33,7 +43,7 @@ BAD_COLOURS = {'medium_nougat', 'reddish_brown'}
 FLAGS = ['glare', 'merged', 'partial', 'not_top_layer', 'not_a_brick']
 
 SYSTEM = """You check the colour of LEGO 2x4 bricks seen from above by a RealSense D435 colour \
-camera over a light table. Every brick is one of five LEGO colours:
+camera over a light table or a grey LEGO baseplate. Every brick is one of five LEGO colours:
 - red (bright, saturated red)
 - dark_red (deep wine/maroon red)
 - dark_orange (saturated orange-brown, clearly orange)
@@ -112,6 +122,13 @@ def close_up(bgr, brick, margin=0.35, min_side=160):
     return cv2.resize(crop, None, fx=scale, fy=scale, interpolation=cv2.INTER_CUBIC) if scale > 1 else crop
 
 
+def task_text(bricks):
+    return (f"Give the colour of each of the {len(bricks)} numbered bricks "
+            f"(ids {', '.join(str(b['id']) for b in bricks)}). Set flags when a brick "
+            'shows glare, looks like two bricks merged, is mostly hidden, does not lie on '
+            'the top layer, or is not a brick. Keep each note under 15 words.')
+
+
 def ask_claude(bgr, bricks, effort='medium'):
     import anthropic
 
@@ -120,11 +137,7 @@ def ask_claude(bgr, bricks, effort='medium'):
                                         'and numbered. Close-ups follow.'}]
     for b in bricks:
         content += [{'type': 'text', 'text': f"Brick {b['id']}:"}, png_block(close_up(bgr, b))]
-    content.append({'type': 'text', 'text':
-                    f"Give the colour of each of the {len(bricks)} numbered bricks "
-                    f"(ids {', '.join(str(b['id']) for b in bricks)}). Set flags when a brick "
-                    'shows glare, looks like two bricks merged, is mostly hidden, does not lie on '
-                    'the top layer, or is not a brick. Keep each note under 15 words.'})
+    content.append({'type': 'text', 'text': task_text(bricks)})
     client = anthropic.Anthropic()
     # Server-side fallback: if the request is declined by a safety classifier, the API
     # re-runs it on a suitable fallback model within the same call.
@@ -146,6 +159,45 @@ def ask_claude(bgr, bricks, effort='medium'):
     return json.loads(text), {'model': response.model, 'request_id': response._request_id,
                               'input_tokens': response.usage.input_tokens,
                               'output_tokens': response.usage.output_tokens}
+
+
+def codex_binary():
+    candidates = [os.environ.get('CODEX_BIN'), shutil.which('codex')]
+    candidates += sorted(glob.glob(os.path.expanduser(
+        '~/.vscode/extensions/openai.chatgpt-*/bin/linux-x86_64/codex')), reverse=True)
+    for candidate in candidates:
+        if candidate and os.access(candidate, os.X_OK):
+            return candidate
+    raise RuntimeError('Codex CLI not found: set CODEX_BIN or install codex')
+
+
+def ask_codex(bgr, bricks, effort='medium', model=None, timeout=600):
+    """Same images and answer format, through `codex exec` (read-only, no saved session)."""
+    with tempfile.TemporaryDirectory(prefix='second_opinion_') as folder:
+        folder = Path(folder)
+        images = [folder / 'overview.png']
+        cv2.imwrite(str(images[0]), overview(bgr, bricks))
+        for b in bricks:
+            images.append(folder / f"brick_{b['id']}.png")
+            cv2.imwrite(str(images[-1]), close_up(bgr, b))
+        (folder / 'schema.json').write_text(json.dumps(RESPONSE_SCHEMA))
+        prompt = (SYSTEM + '\n\nThe first attached image is the overview: every top-layer brick is '
+                  'outlined in white and numbered. The other images are close-ups, in this order: '
+                  + ', '.join(f"brick {b['id']}" for b in bricks) + '.\n\n' + task_text(bricks)
+                  + '\nAnswer only from the images; do not run commands or read files.')
+        command = [codex_binary(), 'exec', '--ephemeral', '--skip-git-repo-check', '--sandbox', 'read-only',
+                   '--cd', str(folder), '--output-schema', str(folder / 'schema.json'),
+                   '--output-last-message', str(folder / 'answer.json'),
+                   '-c', f'model_reasoning_effort="{"high" if effort in ("xhigh", "max") else effort}"']
+        if model:
+            command += ['--model', model]
+        command += [f'--image={image}' for image in images] + ['-']
+        run = subprocess.run(command, input=prompt, capture_output=True, text=True, timeout=timeout)
+        answer = folder / 'answer.json'
+        if run.returncode != 0 or not answer.is_file():
+            raise RuntimeError(f'codex exec failed ({run.returncode}): {run.stderr.strip()[-500:]}')
+        return json.loads(answer.read_text()), {'model': f"codex {model or '(default model)'}",
+                                                'input_tokens': '?', 'output_tokens': '?'}
 
 
 def merge(result, answers):
@@ -177,7 +229,7 @@ def merge(result, answers):
     return summary
 
 
-def review(final_folder, effort='medium'):
+def review(final_folder, effort='medium', backend='claude', model=None):
     """Run the second opinion on a final result folder; returns the summary."""
     final_folder = Path(final_folder)
     result = json.loads((final_folder / 'bricks.json').read_text())
@@ -190,7 +242,8 @@ def review(final_folder, effort='medium'):
     if not bricks:
         print('No bricks to review.')
         return None
-    answers, meta = ask_claude(bgr, bricks, effort)
+    answers, meta = (ask_codex(bgr, bricks, effort, model) if backend == 'codex'
+                     else ask_claude(bgr, bricks, effort))
     (final_folder / 'second_opinion_raw.json').write_text(json.dumps({**meta, **answers}, indent=2))
     summary = merge(result, answers)
     result['second_opinion_model'] = meta['model']
@@ -204,7 +257,7 @@ def review(final_folder, effort='medium'):
     for b in bricks:
         o = b['second_opinion']
         if o['status'] == 'disagree':
-            print(f"  #{b['id']}: classifier {b['colour']} ({b['quality']}), Claude {o['colour']} "
+            print(f"  #{b['id']}: classifier {b['colour']} ({b['quality']}), second opinion {o['colour']} "
                   f"({o['quality']}, {o['confidence']}) {o['flags'] or ''} {o['note']}")
     return summary
 
@@ -212,9 +265,11 @@ def review(final_folder, effort='medium'):
 def main():
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('final_folder', type=Path, help='03_final/.../<frame> folder containing bricks.json')
+    parser.add_argument('--backend', default='claude', choices=['claude', 'codex'])
     parser.add_argument('--effort', default='medium', choices=['low', 'medium', 'high', 'xhigh', 'max'])
+    parser.add_argument('--model', help='codex only: model name (default: your Codex config)')
     args = parser.parse_args()
-    review(args.final_folder, args.effort)
+    review(args.final_folder, args.effort, args.backend, args.model)
 
 
 if __name__ == '__main__':

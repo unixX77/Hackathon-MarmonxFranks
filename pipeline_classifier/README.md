@@ -115,11 +115,38 @@ of each brick, without the classifier's labels, and asks for each brick's colour
 `not_a_brick`). Geometry and poses never change. If they agree, nothing changes; if
 Claude disagrees with medium or high confidence, the brick keeps the classifier's colour,
 its `colour_confidence` becomes `low`, and the printed pose line ends with
-`CHECK: Claude says <colour>`. Outputs in the final folder: `bricks_second_opinion.json`
+`CHECK: second opinion says <colour>`. Outputs in the final folder: `bricks_second_opinion.json`
 (`second_opinion` per brick), `second_opinion.png` (green agree, red disagree, grey
 unsure) and `second_opinion_raw.json`. One call per frame; if it fails, the classifier
 result is used unchanged. `--second-opinion-effort` (default `medium`) trades speed for
 care. Requests use the server-side refusal fallback (`fallbacks: "default"`).
+
+`--second-opinion codex` (or `--backend codex` on the script) asks Codex instead, through
+`codex exec` under your Codex login, with the same images, answer format and merge rule.
+
+## Review by Claude Code or Codex (optional)
+
+```bash
+./run_pipeline_classifier.sh --review           # Claude Code: claude -p, your Claude login
+./run_pipeline_classifier.sh --review codex     # Codex: codex exec, your Codex login
+python classifier/claude_review.py <run>/03_final/capture/<recording>/<frame> --backend codex
+```
+
+[`classifier/claude_review.py`](../classifier/claude_review.py) shows the model the raw frame,
+an overview with every final brick numbered and close-ups, without the classifier's labels.
+Unlike the second opinion it corrects the result: a brick it recolours with medium or high
+confidence takes the model's colour, and a mask it calls `not_a_brick`, `not_top_layer` or
+`merged` with high confidence is dropped. Bricks it sees but the pipeline missed are only
+reported. Geometry of kept bricks never changes. Outputs: `bricks_reviewed.json`,
+`poses_reviewed.csv`, reviewed overlay and masks, and two extra panels in `preview.png`;
+the raw answer is in `claude_review/review.json` (Claude) or `claude_review/codex_answer.json`
+(Codex). `--review-model` (default opus for Claude, your Codex config for Codex) and
+`--review-effort` set the model.
+
+Codex is found via `$CODEX_BIN`, `codex` on PATH, or the binary bundled with the VS Code
+ChatGPT extension. Both CLIs count against your plan's usage limits. A vision model reads the
+same camera image as the classifier: under lamps that make medium nougat look orange, it
+can make the same mistake.
 
 ## Run every capture and compare the pipelines
 
