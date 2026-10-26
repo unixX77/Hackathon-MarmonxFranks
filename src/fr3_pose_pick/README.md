@@ -267,6 +267,20 @@ same config, so every locked value (grasp height, centring, place height, grasp 
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
 
+## Closing the hand gently first, and recording what closing does (2026-10-26 20:20)
+
+"One finger seems to dominate and nudges the brick." The Franka Hand's two fingers are driven together and move equally (the real hand
+reported 0.0349177 m for each finger at rest). What shoves the brick is the hand landing a millimetre or two off the brick's middle, so
+the first finger to touch pushes it, harder since the grip went from 10 N to 40 N. So `Mover.hand(close=True)` now closes in two stages:
+slowly (`grasp_speed` 0.01 m/s) with only `grasp_force_first` (8 N), waits `grasp_settle` (0.3 s), then grips with `grasp_force` (40 N).
+Opening is unchanged. `grasp_force_first: null` brings back the single stage.
+
+The autonomous scripts also record what closing did, in the printout and in `pose_pick_auto_log.json` (`closing`): how far the HAND moved
+while the fingers closed, across the brick and along it (hand frame), in base x and y, and where each finger ended. The fingers move
+together, so a sideways shift of the hand means the brick was not in the middle: the sign says which side pushed, the size by how much.
+If it is always the same side by about the same amount, that is the number to put into `tcp_correction_hand` (across, positive = base -y at
+yaw 0) instead of guessing. Send the lines `Closing: the hand moved ...` of a few picks.
+
 ## The pick moved 2 mm toward -y, and the good row drops higher (2026-10-26 18:40)
 
 The fingers hit the brick when picking (the hand landed 3 mm further toward -y than in the earlier picks: `dy=-1.8` at the grasp against

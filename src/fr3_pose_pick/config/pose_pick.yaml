@@ -79,6 +79,12 @@ tcp_correction_hand: [-0.0130, 0.0065]   # LOCKED 2026-10-26 (x -3.0 mm, y -0.5 
                                 # the fingers hit the brick when picking; across +2 mm is base y -2 mm for a hand at yaw 0
 grasp_force: 40.0                # N. Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
 gripper_speed: 0.02
+# Closing in two stages (2026-10-26 20:20, on request: one finger seemed to push the brick). The two fingers are driven together and move
+# equally; the hand lands 1-2 mm off the middle of the brick, so the first finger to touch shoves it, harder since the grip went to 40 N.
+# So: first close slowly (grasp_speed) with only grasp_force_first, wait grasp_settle, then grip with grasp_force. null = one stage.
+grasp_force_first: 8.0          # N
+grasp_speed: 0.01               # m/s for closing (opening keeps gripper_speed)
+grasp_settle: 0.3               # s between the two stages
 # What the gripper reports once the hand has closed. The Franka Hand has NO force sensor (its effort reads 0): the finger
 # width is the feedback. A held brick reads block_size[1] + hand_zero_width +/- grasp_check_tolerance, and the width must not
 # change by more than hold_check_tolerance between the grasp and the end of the lift (a dropped brick lets the fingers close).

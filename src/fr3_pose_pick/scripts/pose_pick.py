@@ -299,7 +299,7 @@ def task_config(c, plan):
                              'acceleration_scale', 'grasp_force', 'grasp_width', 'gripper_speed',
                              'open_width', 'base_frame', 'ee_frame')}
     cfg['pick'] = cfg['place'] = list(plan['grip'])
-    for key in ('min_open_clearance', 'hand_zero_width'):
+    for key in ('min_open_clearance', 'hand_zero_width', 'grasp_force_first', 'grasp_speed', 'grasp_settle'):
         if key in c:
             cfg[key] = c[key]
     return cfg

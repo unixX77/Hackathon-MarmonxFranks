@@ -332,21 +332,34 @@ class Mover:
         from franka_msgs.action import Grasp, Move
         if width is None:
             width = self.c['grasp_width'] if close else self.c['open_width']
-        self.ask_step('Close the hand on the brick' if close else 'Open the hand',
-                      f'Hand to {width * 1000:.0f} mm' + (f' with {self.c["grasp_force"]:.0f} N' if close else ''))
-        goal = Grasp.Goal() if close else Move.Goal()
-        goal.width, goal.speed = float(width), float(self.c['gripper_speed'])
+        stages = [(float(width), float(self.c['gripper_speed']), None)]               # (width, speed, force)
         if close:
-            goal.force = float(self.c['grasp_force'])
-            goal.epsilon.inner = goal.epsilon.outer = 0.003
-        client = self.grasp_client if close else self.move_client
-        handle = self.wait(client.send_goal_async(goal), 10)
-        if not handle.accepted:
-            raise RuntimeError('Hand action rejected')
-        result = self.wait(handle.get_result_async(), 60)
-        if result.status != GoalStatus.STATUS_SUCCEEDED or not result.result.success:
-            raise RuntimeError('Grasp failed: the hand did not close on the brick' if close
-                               else 'Hand failed to open')
+            # The two fingers are driven together and move equally, but the hand lands a millimetre or two off the brick's middle, so the
+            # first finger to touch pushes the brick. Close GENTLY first (slowly, with grasp_force_first): the brick is met and centred
+            # with a few newtons; then grip with the full grasp_force once both fingers are on it.
+            speed, force = float(self.c.get('grasp_speed', self.c['gripper_speed'])), float(self.c['grasp_force'])
+            first = self.c.get('grasp_force_first')
+            stages = [(float(width), speed, float(first))] if first is not None and float(first) < force else []
+            stages.append((float(width), speed, force))
+        self.ask_step('Close the hand on the brick' if close else 'Open the hand',
+                      f'Hand to {width * 1000:.0f} mm' + (f' with {self.c["grasp_force"]:.0f} N' + (
+                          f' (first {stages[0][2]:.0f} N, slowly)' if len(stages) > 1 else '') if close else ''))
+        for index, (stage_width, speed, force) in enumerate(stages):
+            goal = Grasp.Goal() if close else Move.Goal()
+            goal.width, goal.speed = stage_width, speed
+            if close:
+                goal.force = force
+                goal.epsilon.inner = goal.epsilon.outer = 0.003
+            client = self.grasp_client if close else self.move_client
+            handle = self.wait(client.send_goal_async(goal), 10)
+            if not handle.accepted:
+                raise RuntimeError('Hand action rejected')
+            result = self.wait(handle.get_result_async(), 60)
+            if result.status != GoalStatus.STATUS_SUCCEEDED or not result.result.success:
+                raise RuntimeError('Grasp failed: the hand did not close on the brick' if close
+                                   else 'Hand failed to open')
+            if index < len(stages) - 1:
+                time.sleep(float(self.c.get('grasp_settle', 0.3)))                    # let the brick settle between the fingers
 
     # ------------------------------------------------------------- scene state
     def apply_scene(self, scene):

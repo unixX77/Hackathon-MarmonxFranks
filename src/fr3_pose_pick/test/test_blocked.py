@@ -151,4 +151,4 @@ def test_the_hand_opens_to_the_requested_width():
     mover.hand()                                                           # default: open_width
     mover.hand(width=0.026)                                                # the wider pick opening
     mover.hand(close=True)                                                 # grasp_width
-    assert sent == [round(CONFIG['open_width'], 4), 0.026, round(CONFIG['grasp_width'], 4)]
+    assert sent == [round(CONFIG['open_width'], 4), 0.026, round(CONFIG['grasp_width'], 4), round(CONFIG['grasp_width'], 4)]   # the close is gentle, then firm

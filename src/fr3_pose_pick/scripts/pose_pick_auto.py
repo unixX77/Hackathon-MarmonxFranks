@@ -94,6 +94,36 @@ class AutoMission(pp.Mission):
         self.place_trace = {}
         check_auto_settings(self.c)
 
+    def record_closing(self):
+        """What closing the hand did: how far the HAND moved while the fingers closed (in the hand's own frame: along the long side,
+        across it) and where each finger ended. The fingers move together, so a sideways shift of the hand means the brick was not in
+        the middle and one finger pushed it (or the arm gave way): the sign says which side, the size by how much."""
+        import smooth_motion as sm
+        before = self.grasp_pick
+        if before is None:
+            return
+        self.spin(0.3)
+        pose = self.mover.hand_pose()
+        shift = np.array(pose[:3, 3][:2], dtype=float) - np.array(before[:2], dtype=float)
+        yaw = sm.hand_yaw(pose[:3, :3])
+        along = shift[0] * math.cos(yaw) + shift[1] * math.sin(yaw)          # base -> hand frame (the inverse of hand_frame_to_base)
+        across = shift[0] * math.sin(yaw) - shift[1] * math.cos(yaw)
+        fingers = sorted(getattr(self.mover, 'finger_positions', {}).items())
+        sides = [round(float(position) * 1000, 2) for _, position in fingers]
+        self.closing = {'shift_base_mm': [round(float(v) * 1000, 2) for v in shift], 'along_mm': round(along * 1000, 2),
+                        'across_mm': round(across * 1000, 2), 'fingers_mm': sides,
+                        'finger_difference_mm': round(sides[0] - sides[1], 2) if len(sides) == 2 else None}
+        self.say(f'Closing: the hand moved {across * 1000:+.2f} mm across the brick and {along * 1000:+.2f} mm along it while the fingers closed'
+                 + (f'; fingers {sides[0]:.2f} / {sides[1]:.2f} mm' if len(sides) == 2 else ''))
+
+    def check_grasp(self, when):
+        if when == 'after closing':
+            try:
+                self.record_closing()
+            except Exception as problem:                               # a diagnostic must never stop a pick
+                self.say(f'(closing shift not recorded: {problem})')
+        super().check_grasp(when)
+
     def grasp_alert(self, when, problem):
         raise GraspNotConfirmed(f'Grasp not confirmed {when}: {problem}. The brick was not carried on.')
 
@@ -319,7 +349,7 @@ class AutoMission(pp.Mission):
                  'finger_width_mm': {k: round(v * 1000, 2) for k, v in self.grasp_widths.items()},
                  'pick_stage_xy': None if self.stage_pick is None else [round(float(v), 5) for v in self.stage_pick[:2]],
                  'pick_grasp_xy': None if self.grasp_pick is None else [round(float(v), 5) for v in self.grasp_pick[:2]],
-                 'place': getattr(self, 'place_trace', {})}
+                 'place': getattr(self, 'place_trace', {}), 'closing': getattr(self, 'closing', None)}
         if self.place is not None:
             where = self.place_plan()
             entry['place_xyz'], entry['place_yaw_deg'] = where['release'], math.degrees(where['yaw'])

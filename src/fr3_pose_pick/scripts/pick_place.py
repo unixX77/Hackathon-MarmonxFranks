@@ -39,6 +39,12 @@ def validate(c):
         v = c.get(key)
         if isinstance(v, bool) or not isinstance(v, (int, float)) or not low < v <= high:
             raise ValueError(f'{key} must be in ({low}, {high}]')
+    for key, high in (('grasp_force_first', 20), ('grasp_speed', 0.05), ('grasp_settle', 3)):
+        v = c.get(key)
+        if v is not None and (isinstance(v, bool) or not isinstance(v, (int, float)) or not 0 < v <= high):
+            raise ValueError(f'{key} must be in (0, {high}]')
+    if c.get('grasp_force_first') is not None and c['grasp_force_first'] > c['grasp_force']:
+        raise ValueError('grasp_force_first (the gentle first closing) must not be more than grasp_force')
     needed = c.get('min_open_clearance', 0.005)
     zero = c.get('hand_zero_width', 0.0)           # what the hand reads when the (printed) tips touch each other
     if c['block_size'][1] + zero + needed > c['open_width'] + 1e-9:
