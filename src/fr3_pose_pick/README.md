@@ -246,6 +246,11 @@ if a later pick is off by a steady amount, take the photo with the hand at the s
 before changing the centring again. The place may still be pressed 2 mm lower at the stop (total press limit 3 mm).
 `measure_grasp_offset.py` and the config check now accept a centring up to 20 mm (it was 10 mm).
 
+    grasp_force:         40.0        was 10 N. A 2x4 seated on the baseplate takes roughly 10-25 N to pull off (about 2 N per
+                                     stud); two fingers hold 2 x friction x force, so 40 N has a safe margin. The config check
+                                     now accepts up to 50 N (the Franka Hand is rated 70 N). If the printed tips flex or the
+                                     brick creaks, go down in steps of 5 N; if the brick still slips while lifting, up to 50 N.
+
 ## The hand stops on the way down: it is never closed on, and the brick is never released in the air
 
 The last move before the grasp (and before the release) is a straight vertical line. If the hand ends it more than

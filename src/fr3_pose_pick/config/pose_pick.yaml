@@ -72,7 +72,7 @@ blocked_sideways: 0.0035
 #   measure_grasp_offset.py --last 5 --apply <this file>
 # (the corrections you still type are added to this value). The earlier values are in git history.
 tcp_correction_hand: [-0.0130, 0.0045]   # LOCKED 2026-10-26 from the good pick (x -3.0 mm, y -0.5 mm at the stop)
-grasp_force: 10.0
+grasp_force: 40.0                # N. Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
 gripper_speed: 0.02
 # Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the
 # hand stays on the line), which made the arm jerk. true = keep the hand on exactly the same line but remove the wobble and

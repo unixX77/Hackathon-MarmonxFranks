@@ -32,7 +32,7 @@ def validate(c):
         if min(c[key]) <= 0:
             raise ValueError(f'{key} dimensions must be positive')
     limits = {'clearance': (0, 0.3), 'velocity_scale': (0, 0.1),
-              'acceleration_scale': (0, 0.1), 'grasp_force': (0, 20),
+              'acceleration_scale': (0, 0.1), 'grasp_force': (0, 50),
               'gripper_speed': (0, 0.05), 'open_width': (0, 0.08),
               'grasp_width': (0, 0.08)}
     for key, (low, high) in limits.items():

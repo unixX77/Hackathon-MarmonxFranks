@@ -230,6 +230,21 @@ def test_config_check_accepts_the_fixed_widths_and_still_rejects_a_hand_that_is_
         module.validate({k: v for k, v in cfg.items() if k != 'min_open_clearance'})  # without the setting: the 5 mm rule
 
 
+def test_the_grasp_force_is_strong_enough_for_the_studs_and_capped_below_the_hand_rating():
+    """A seated 2x4 needs about 10-25 N to pull off the baseplate; the hand holds 2 x friction x force. Never above 50 N (rated 70)."""
+    pytest.importorskip('rclpy')                                  # pick_place imports ROS
+    spec = importlib.util.spec_from_file_location('pick_place_force', ROOT / 'scripts' / 'pick_place.py')
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    cfg = pp.task_config(dict(CONFIG), pp.plan_pick(CONFIG, 0.40, 0.0))
+    assert 30.0 <= CONFIG['grasp_force'] <= 50.0
+    assert module.validate(cfg)
+    assert module.validate(dict(cfg, grasp_force=50.0))
+    for bad in (0.0, -5.0, 50.1, 70.0, '40', True):
+        with pytest.raises(ValueError, match='grasp_force'):
+            module.validate(dict(cfg, grasp_force=bad))
+
+
 def test_tcp_correction_must_be_two_small_numbers_in_metres():
     pp.check_tcp_correction({})                                          # absent: fine
     pp.check_tcp_correction({'tcp_correction_hand': [0.0025, -0.0012]})
