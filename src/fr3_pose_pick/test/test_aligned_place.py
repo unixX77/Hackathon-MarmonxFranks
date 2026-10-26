@@ -27,10 +27,14 @@ ENGAGE = 0.0005          # the brick only drops onto its studs within this (x, y
 PICK_ERRORS = {'Hover above the brick': (-2.0, 1.1, -0.7), 'Come down to the inspection height': (-1.8, 1.5, -0.4),
                'Lower to the brick': (-0.6, 1.1, 0.7), 'Lift the brick': (-0.4, 0.5, -1.0)}
 # the new place comes down in the same two steps as the pick, so it lands like the pick does (within a few tenths of a mm)
+# Here the stage-to-fine descent drags the hand 2.2 mm in x, where the pick's drag was 1.2 mm in x: the 17:23 palletizing run
+# lost 2.5 mm that way. Only the second alignment, at the fine stop, brings the brick back onto its seat.
 PLACE_ERRORS = {'Carry the brick above the place pose': (-0.5, 0.4, -1.0),
                 'Lower the brick to the alignment height': (-1.7, 1.4, -0.5),
                 'Align the brick over its place': (-1.8, 1.5, -0.4),
-                'Lower the brick to the place pose': (-0.4, 1.0, 0.5),
+                'Lower the brick to the fine height': (0.5, 1.4, -0.3),
+                'Align the brick over its place (fine)': (0.4, 1.3, -0.3),
+                'Lower the brick to the place pose': (0.5, 1.4, 0.2),
                 'Lift and shift to try again': (0.0, 0.0, 0.0), 'Back off straight up': (-0.3, 0.7, -0.6)}
 # what the OLD open-loop place did in the 16:23 run: one 10 cm line from the hover, landing (+0.8, +0.3) mm off
 OPEN_LOOP_ERRORS = dict(PLACE_ERRORS, **{'Lower the brick to the place pose': (0.8, 0.3, 0.2)})
@@ -141,18 +145,34 @@ def test_the_brick_goes_back_in_where_the_open_loop_run_put_it_on_the_studs():
     target = m.grasp_pick[:2]
     assert np.hypot(*(m.release_hand[:2] - target)) < 0.0005
     assert m.mover.opened == 1 and m.mover.detached == 1 and not m.blocked
-    assert m.place_trace['search_tries'] == 0 and m.place_trace['alignment_left_mm'] <= 0.4
+    assert m.place_trace['search_tries'] == 0 and m.place_trace['coarse_left_mm'] <= 1.0 and m.place_trace['fine_left_mm'] <= 0.3
     labels = [entry[0] for entry in m.mover.log]
-    assert labels[-5:] == ['Carry the brick above the place pose', 'Lower the brick to the alignment height',
-                           'Align the brick over its place', 'Lower the brick to the place pose', 'Back off straight up']
+    steps = [label for i, label in enumerate(labels) if i == 0 or label != labels[i - 1]]     # repeated corrections counted once
+    assert steps[-7:] == ['Carry the brick above the place pose', 'Lower the brick to the alignment height',
+                          'Align the brick over its place', 'Lower the brick to the fine height',
+                          'Align the brick over its place (fine)', 'Lower the brick to the place pose', 'Back off straight up']
+    fine = [entry for entry in m.mover.log if entry[0] == 'Lower the brick to the fine height'][0]
+    assert fine[1][2] == pytest.approx(m.place_plan()['release'][2] + CONFIG['place_fine_height'])
     # the same two-step approach as the pick: the alignment height is the pick's inspection height
     align = [entry for entry in m.mover.log if entry[0] == 'Lower the brick to the alignment height'][0]
     assert align[1][2] == pytest.approx(m.plan['inspect'][2])
 
 
+def test_the_second_alignment_is_what_saves_a_place_where_the_long_descent_drags_differently():
+    """17:23: the 4 cm stop was aligned to 0.14 mm, the descent dragged the hand 2.5 mm, the brick sat on the studs."""
+    m = mission(config={'place_fine_tries': 0, 'place_fine_tolerance': 1.0, 'place_search_tries': 0})
+    with pytest.raises(RuntimeError, match='NOT released'):
+        m.place_brick()
+    assert m.blocked and m.mover.opened == 0
+    m = mission()                                                            # the same arm with the fine alignment
+    m.place_brick()
+    assert np.hypot(*(m.release_hand[:2] - m.place_hand_target())) < 0.0005 and not m.blocked
+
+
 def test_without_the_alignment_the_same_run_sits_on_top_of_the_studs():
     """The control: no alignment, no search (the old behaviour) -> blocked 2.7 mm up, as in the log."""
-    m = mission(errors=OPEN_LOOP_ERRORS, config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_search_tries': 0})
+    m = mission(errors=OPEN_LOOP_ERRORS, config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0,
+                                                  'place_fine_tolerance': 1.0, 'place_search_tries': 0})
     with pytest.raises(RuntimeError, match='NOT released'):
         m.place_brick()
     assert m.blocked and m.blocked[0]['short_mm'] == pytest.approx(2.7, abs=0.05)
@@ -162,7 +182,7 @@ def test_without_the_alignment_the_same_run_sits_on_top_of_the_studs():
 def test_a_brick_on_top_of_the_studs_is_shifted_and_pressed_again():
     # skip the alignment and leave 0.9 mm of error in x: the first try (and the +0.7 mm one) sit on the studs, the -0.7 mm one drops in
     m = mission(errors=dict(PLACE_ERRORS, **{'Lower the brick to the place pose': (0.9, 0.0, 0.0)}),
-                config={'place_align_tries': 0, 'place_align_tolerance': 1.0})
+                config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0, 'place_fine_tolerance': 1.0})
     m.place_brick()
     assert m.place_trace['search_tries'] == 2 and len(m.blocked) == 2
     assert np.hypot(*(m.release_hand[:2] - m.mover.seat[:2])) <= ENGAGE
@@ -172,7 +192,7 @@ def test_a_brick_on_top_of_the_studs_is_shifted_and_pressed_again():
 
 def test_when_nothing_works_the_brick_stays_in_the_hand():
     m = mission(extra={'Lower the brick to the place pose': (0.0, 4.0, 0.0)},
-                config={'place_align_tries': 0, 'place_align_tolerance': 1.0})
+                config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0, 'place_fine_tolerance': 1.0})
     with pytest.raises(RuntimeError, match=r'NOT released.*after 7 tries'):
         m.place_brick()
     assert len(m.blocked) == 7 and m.mover.opened == 0 and m.mover.detached == 0

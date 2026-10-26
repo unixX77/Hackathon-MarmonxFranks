@@ -139,9 +139,13 @@ base_pad_center: [-0.0414, 0.0, -0.010]
 
 # ---- Autonomous place (pose_pick_auto.py, pose_pick_palletize.py) ------------------------------------------------------------
 # The brick is set down where the hand MEASURABLY must be, not where the arm is told to go (it lands 1 to 2 mm off).
-place_align_tolerance: 0.0004   # m: stop nudging when the measured hand is this close (x, y) to where it must be
-place_align_tries: 3            # at most this many alignment corrections before going on
-place_align_max: 0.008          # m: a bigger gap than this at the alignment stop means the pose or the arm is wrong: stop
+place_align_tolerance: 0.001    # m: the 4 cm stop (coarse): stop nudging when the measured hand is this close (x, y) to where it must be
+place_align_tries: 2            # at most this many corrections there before going on
+place_align_max: 0.008          # m: a bigger gap than this at the 4 cm stop means the pose or the arm is wrong: stop
+place_fine_height: 0.008        # m above the release height: the second stop, just above the studs, where the final alignment is done
+place_fine_tolerance: 0.0003    # m: stop nudging at the fine stop when the measured hand is this close to where it must be
+place_fine_tries: 3             # at most this many corrections at the fine stop before going on
+place_fine_max: 0.004           # m: a bigger gap than this at the fine stop means something is wrong: stop
 place_search_step: 0.0007       # m: a brick sitting on top of the studs is tried again shifted by this much, in a small spiral
 place_search_tries: 6           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand
 

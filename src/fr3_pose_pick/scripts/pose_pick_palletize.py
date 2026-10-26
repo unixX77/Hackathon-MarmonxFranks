@@ -18,18 +18,19 @@ One brick per command, as the poses arrive from your friend:
   ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml \\
       --camera-xyz X Y Z --camera-angle A
 
-or several bricks in one go (the arm moves in between, so give the pose the pictures were taken from):
+or several bricks in one go. Start the command with the arm at the pose the pictures were taken from: that pose is
+remembered for every brick (or give it with --ee-pose X Y Z QX QY QZ QW):
 
   ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml \\
-      --ee-pose X Y Z QX QY QZ QW  --brick X1 Y1 Z1 A1  --brick X2 Y2 Z2 A2  --brick X3 Y3 Z3 A3
+      --brick X1 Y1 Z1 A1  --brick X2 Y2 Z2 A2  --brick X3 Y3 Z3 A3
 
 The other options are those of pose_pick.py, except the place ones (this script decides where each brick goes) and the
 questions. Own options:
   --start-offset DX DY   where the FIRST brick goes, from where it was picked (default: palletize_start_offset in the config,
                          0 0.098); fixed by the first brick
-  --gap METRES           space between neighbouring bricks (default 0.016); fixed by the first brick
+  --gap METRES           space between neighbouring bricks (default 0.016); may be changed while at most one brick is down
   --row-yaw DEG          angle of the long side of the placed bricks from base x (default 0)
-  --brick X Y Z A        a brick to pick: camera point and angle (repeat it; needs --ee-pose when there are several)
+  --brick X Y Z A        a brick to pick: camera point and angle (repeat it for several; all from the same picture pose)
   --status               show the row, what is placed and where the next one goes (moves nothing)
   --shift DX DY          move the whole row by this much (metres, at most 1 cm per call; moves nothing)
   --reset                forget the row and start a new one
@@ -223,17 +224,22 @@ def main(argv=None):
         if args.brick:
             if any(arg.split('=', 1)[0] in PICK_OPTIONS for arg in rest):
                 raise ValueError('--brick replaces --camera-xyz / --camera-angle / --pose: use one way to give the bricks')
-            if len(args.brick) > 1 and '--ee-pose' not in rest:
-                raise ValueError('Several bricks need --ee-pose X Y Z QX QY QZ QW (the arm pose the pictures were taken from): the '
-                                 'arm moves between the bricks, so "the arm right now" would be wrong for every brick after the first')
             picks = [['--camera-xyz', fmt(x), fmt(y), fmt(z), '--camera-angle', fmt(a)] for x, y, z, a in args.brick]
         else:
             picks = [[]]
         if state is not None:                              # a started row keeps its geometry
-            for name, given, kept in (('--start-offset', args.start_offset, state['start_offset']), ('--gap', args.gap, state['gap']),
+            for name, given, kept in (('--start-offset', args.start_offset, state['start_offset']),
                                       ('--row-yaw', args.row_yaw, state['row_yaw_deg'])):
                 if given is not None and list(_flat(given)) != list(_flat(kept)):
                     raise ValueError(f'The row was started with {name} {kept}: it cannot change in the middle. Use --reset for a new row.')
+            if args.gap is not None and abs(args.gap - state['gap']) > 1e-9:
+                if len(state['placed']) > 1:
+                    raise ValueError(f'The row has {len(state["placed"])} bricks {state["gap"] * 1000:.0f} mm apart: the gap cannot '
+                                     'change in the middle. Use --reset for a new row.')
+                state['gap'], state['pitch'] = float(args.gap), float(c['block_size'][1] + args.gap)     # only the next slots move
+                save_state(path, state)
+                print(f'Gap changed to {args.gap * 1000:.1f} mm (centres {state["pitch"] * 1000:.1f} mm apart): only '
+                      f'{len(state["placed"])} brick is down, so only the next slots move.', flush=True)
         else:
             state = new_state(args.start_offset or c.get('palletize_start_offset') or DEFAULT_START_OFFSET,
                               args.gap if args.gap is not None else DEFAULT_GAP,
@@ -244,8 +250,17 @@ def main(argv=None):
         return 2
 
     base = ['--config', args.config] + rest
-    old_input, old_mission, old_argv = builtins.input, pp.Mission, sys.argv
+    old_input, old_mission, old_argv, old_lookup = builtins.input, pp.Mission, sys.argv, pp.lookup_hand
     pp.Mission = PalletizeMission
+    if len(picks) > 1 and '--ee-pose' not in rest:
+        photo = {}
+
+        def lookup_once(node, buffer, config, seconds=10.0):
+            if 'pose' not in photo:                                  # the arm pose at the start of this command ...
+                photo['pose'] = old_lookup(node, buffer, config, seconds)
+            return photo['pose']                                    # ... is the camera pose of every picture
+        pp.lookup_hand = lookup_once
+        print('Several bricks: the pictures are taken to be from the arm pose it has now (give --ee-pose to say otherwise).', flush=True)
     done = 0
     try:
         for number, pick in enumerate(picks, 1):
@@ -280,7 +295,7 @@ def main(argv=None):
               '(see --status).', file=sys.stderr, flush=True)
         return 1
     finally:
-        builtins.input, pp.Mission, sys.argv = old_input, old_mission, old_argv
+        builtins.input, pp.Mission, sys.argv, pp.lookup_hand = old_input, old_mission, old_argv, old_lookup
 
 
 def _flat(value):

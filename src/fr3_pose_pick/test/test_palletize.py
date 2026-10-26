@@ -171,7 +171,6 @@ def test_a_failure_stops_the_batch_and_the_row_keeps_what_is_down(run, tmp_path,
     (['--place-layers', '2'], 'decides where each brick goes'),
     (['--step'], 'brings a question back'),
     (['--brick', '1', '2', '3', '4', '--camera-xyz', '0', '0', '0.3'], 'use one way'),
-    (['--brick', '0.1', '0', '0.26', '-86', '--brick', '0.1', '0.1', '0.26', '-86'], 'need --ee-pose'),
     (['--start-offset', '0', '0.02', '--camera-xyz', '0', '0', '0.3'], 'clear of the stack'),
 ])
 def test_bad_commands_are_refused_before_anything_starts(run, extra, message, capsys):
@@ -180,13 +179,24 @@ def test_bad_commands_are_refused_before_anything_starts(run, extra, message, ca
     assert message in capsys.readouterr().err
 
 
-def test_a_started_row_keeps_its_geometry(run, tmp_path, capsys):
-    run(['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4', '--gap', '0.02'])
-    code, capture = run(['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4', '--gap', '0.016'])
-    assert code == 2 and 'cannot change in the middle' in capsys.readouterr().err
-    code, capture = run(['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4', '--gap', '0.02'])
-    assert code == 0                                                                         # the same value again is fine
-    assert pal.load_state(tmp_path / 'row.json')['pitch'] == pytest.approx(0.036)
+def test_a_started_row_keeps_its_offset_and_angle(run, tmp_path, capsys):
+    pick = ['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4']
+    run(pick)
+    for option in (['--start-offset', '0', '0.05'], ['--row-yaw', '3']):
+        code, capture = run(pick + option)
+        assert code == 2 and 'cannot change in the middle' in capsys.readouterr().err and not capture.calls
+
+
+def test_the_gap_may_change_while_at_most_one_brick_is_down_and_not_after(run, tmp_path, capsys):
+    pick = ['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4']
+    run(pick + ['--gap', '0.02'])                                                            # brick 1 with a 20 mm gap
+    code, capture = run(pick + ['--gap', '0.017'])                                           # one brick down: slot 2 can still move
+    assert code == 0 and 'Gap changed to 17.0 mm' in capsys.readouterr().out
+    state = pal.load_state(tmp_path / 'row.json')
+    assert state['pitch'] == pytest.approx(0.033) and len(state['placed']) == 2
+    assert pal.slot_xy(state, 1)[1] - pal.slot_xy(state, 0)[1] == pytest.approx(0.033)
+    code, capture = run(pick + ['--gap', '0.02'])                                            # two bricks down: refused
+    assert code == 2 and 'gap cannot change in the middle' in capsys.readouterr().err and not capture.calls
 
 
 def test_status_shift_and_reset_move_nothing(run, tmp_path, capsys):
@@ -249,3 +259,31 @@ def test_the_start_offset_comes_from_the_config_and_an_option_overrides_it(run, 
     code, capture = run(['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4', '--start-offset', '0.0', '0.1'])
     assert code == 0 and capture.calls[0][capture.calls[0].index('--place-offset') + 2] == '0.100000'
     assert pal.load_state(tmp_path / 'row.json')['start_offset'] == [0.0, 0.1]
+
+
+def test_several_bricks_use_the_arm_pose_the_command_started_with(run, monkeypatch, tmp_path):
+    """After brick 1 the arm is somewhere else; the pictures were all taken from where it was at the start."""
+    poses = iter([np.full((4, 4), 1.0), np.full((4, 4), 2.0), np.full((4, 4), 3.0)])
+    monkeypatch.setattr(pp, 'lookup_hand', lambda node, buffer, c, seconds=10.0: next(poses))
+    seen = []
+    capture = Capture()
+    original_call = capture.__call__.__func__
+
+    def call(self):
+        seen.append(pp.lookup_hand(None, None, {}))
+        return original_call(self)
+    monkeypatch.setattr(Capture, '__call__', call)
+    code, _ = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', '--brick', '0.09', '-0.03', '0.26', '-85',
+                   '--brick', '0.085', '-0.05', '0.262', '-87'], capture)
+    assert code == 0 and len(seen) == 3
+    assert all(pose is seen[0] for pose in seen) and seen[0][0, 0] == 1.0                    # read once, shared by all three
+    assert pp.lookup_hand.__name__ == '<lambda>'                                             # and put back afterwards
+
+
+def test_with_an_ee_pose_the_lookup_is_left_alone(run, monkeypatch):
+    marker = lambda node, buffer, c, seconds=10.0: 'real'          # noqa: E731
+    monkeypatch.setattr(pp, 'lookup_hand', marker)
+    capture = Capture()
+    code, _ = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0', '--brick', '0.0877', '-0.0416', '0.2610', '-86.4',
+                   '--brick', '0.09', '-0.03', '0.26', '-85'], capture)
+    assert code == 0 and pp.lookup_hand is marker

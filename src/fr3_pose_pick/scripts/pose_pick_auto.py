@@ -9,11 +9,11 @@ What is different here:
   * It asks nothing. The "Type GO" question is a countdown (default 5 s) in which Ctrl+C or the e-stop cancels, and
     the inspection stops, step mode and the correction prompts are always off. It refuses --step, --inspect and
     --place-inspect, and it answers no prompt at all: a question that still shows up stops the run before it moves.
-  * It sets the brick down where it MEASURABLY was, not where the arm was told to go. The arm lands 1 to 2 mm off its
-    target, by an amount that depends on the approach, and a brick needs about 0.5 mm to drop onto its studs (a first run
-    put it on top of them, 1.7 mm high). So the place comes down in the same two steps as the pick, nudges x and y until the
-    measured hand position matches the one measured at the pick, presses the brick in, and if it still sits on the studs
-    tries again shifted by 0.7 mm in a small spiral before it gives up.
+  * It sets the brick down where it MEASURABLY must be, not where the arm was told to go. The arm lands 1 to 2 mm off its
+    target, by an amount that depends on the approach and on where it is, and a brick needs about 0.5 mm to drop onto its studs.
+    So the place comes down in three steps: a stop 4 cm up where it nudges x and y until the measured hand position is right,
+    a second stop 8 mm above the seat where it does that again (a short descent cannot drag the hand far), then the press. If
+    the brick still sits on the studs it lifts and tries again shifted by 0.7 mm in a small spiral before it gives up.
   * It trusts the gripper, not the pose: after the hand closes and again after the lift it reads the finger width the
     gripper reports (the Franka Hand has no force sensor, its effort reads 0, but the width is exact) and stops when it
     does not fit a held brick: nothing between the fingers, the wrong object, or a brick that slipped or fell.
@@ -74,6 +74,9 @@ class AutoMission(pp.Mission):
         self.truth_target = None      # palletizing: where the hand must really be at the release (x, y), robot coordinates
         self.release_hand = None      # measured hand position at the release
         self.place_trace = {}
+        fine = float(self.c.get('place_fine_height', 0.008))
+        if not 0.004 <= fine < float(self.c.get('inspect_height', 0.04)):
+            raise ValueError('place_fine_height must be from 4 mm (clear of the studs) to below inspect_height (metres: 0.008 is 8 mm)')
 
     def grasp_alert(self, when, problem):
         raise GraspNotConfirmed(f'Grasp not confirmed {when}: {problem}. The brick was not carried on.')
@@ -110,44 +113,41 @@ class AutoMission(pp.Mission):
         nominal = np.array(self.place_plan()['centre'][:2], dtype=float)
         return nominal + (self.grasp_pick[:2] - np.array(self.plan['centre'][:2], dtype=float))
 
+    AUTO_KEYS = pp.PLACE_KEYS + ('fine',)
+
     def aim_plan(self, where, target):
         """Shift the place plan so that the point Mover.move commands is `target` (hand x, y)."""
         centre = np.array(target, dtype=float) - self.centring_offset(where['yaw'])
         shift = centre - np.array(where['centre'][:2], dtype=float)
-        pp.apply_nudge(where, float(shift[0]), float(shift[1]), 0.0, 0.0, pp.PLACE_KEYS)
+        pp.apply_nudge(where, float(shift[0]), float(shift[1]), 0.0, 0.0, self.AUTO_KEYS)
         return where
 
-    def align_over_place(self, where, target):
-        """At the same height the pick stopped at, nudge the hand until the MEASURED position is where it must be so that the
-        straight descent (which drags the hand sideways by the same 1 mm it did at the pick) ends exactly on `target`."""
-        tolerance = float(self.c.get('place_align_tolerance', 0.0004))
-        tries = int(self.c.get('place_align_tries', 3))
-        limit = float(self.c.get('place_align_max', 0.008))
-        drift = np.zeros(2)
-        if self.grasp_pick is not None and self.stage_pick is not None:
-            drift = self.grasp_pick[:2] - self.stage_pick[:2]
-        want = np.array(target, dtype=float) - drift
+    def pick_drift(self):
+        """(how far the straight descent of the pick dragged the hand sideways (x, y), the height that descent covered)."""
+        if self.grasp_pick is None or self.stage_pick is None:
+            return np.zeros(2), 0.04
+        return self.grasp_pick[:2] - self.stage_pick[:2], max(float(self.stage_pick[2] - self.grasp_pick[2]), 0.01)
+
+    def align_at(self, where, key, want, label, tolerance, tries, limit):
+        """Nudge the hand, at the stop where[key], until its MEASURED x, y is within `tolerance` of `want`. Returns what is left."""
         size = 0.0
         for attempt in range(tries + 1):
-            error = want - self.hand_xy()
+            error = np.array(want, dtype=float) - self.hand_xy()
             size = float(np.hypot(error[0], error[1]))
-            self.say(f'  alignment {attempt}: the hand is {size * 1000:.2f} mm from where it must be '
+            self.say(f'  alignment ({label}) {attempt}: the hand is {size * 1000:.2f} mm from where it must be '
                      f'(dx={error[0] * 1000:+.2f} dy={error[1] * 1000:+.2f})')
             if size <= tolerance:
                 break
             if size > limit:
-                raise RuntimeError(f'The hand is {size * 1000:.1f} mm from where the brick must be set down, more than '
-                                   f'place_align_max ({limit * 1000:.0f} mm): something is wrong with the pose or the arm. '
+                raise RuntimeError(f'The hand is {size * 1000:.1f} mm from where the brick must be set down ({label} stop), more '
+                                   f'than allowed ({limit * 1000:.0f} mm, place_align_max / place_fine_max): something is wrong with the pose or the arm. '
                                    'The brick was NOT released.')
             if attempt == tries:
-                self.say(f'  alignment: {size * 1000:.2f} mm left after {tries} corrections; going on')
+                self.say(f'  alignment ({label}): {size * 1000:.2f} mm left after {tries} corrections; going on')
                 break
-            pp.apply_nudge(where, float(error[0]), float(error[1]), 0.0, 0.0, pp.PLACE_KEYS)
-            self.go('Align the brick over its place', where['inspect'], where['yaw'])
-        self.place_trace.update({'stage_target_xy': [round(float(v), 5) for v in want],
-                                 'drift_mm': [round(float(v) * 1000, 2) for v in drift],
-                                 'alignment_left_mm': round(size * 1000, 2)})
-        return where
+            pp.apply_nudge(where, float(error[0]), float(error[1]), 0.0, 0.0, self.AUTO_KEYS)
+            self.go('Align the brick over its place' + ('' if label == 'coarse' else f' ({label})'), where[key], where['yaw'])
+        return size
 
     SEARCH = ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1))      # in units of the search step
 
@@ -171,23 +171,34 @@ class AutoMission(pp.Mission):
                     raise RuntimeError(f'{problem} The brick was NOT released (it is still in the hand), after '
                                        f'{k + 1} tries.') from None
                 nx, ny = pattern[k + 1]
-                pp.apply_nudge(where, (nx - ux) * step, (ny - uy) * step, 0.0, 0.0, pp.PLACE_KEYS)
-                self.say(f'The brick sits on top of the studs: lifting 8 mm and trying again {math.hypot(nx, ny) * step * 1000:.1f} mm '
+                pp.apply_nudge(where, (nx - ux) * step, (ny - uy) * step, 0.0, 0.0, self.AUTO_KEYS)
+                self.say(f'The brick sits on top of the studs: lifting and trying again {math.hypot(nx, ny) * step * 1000:.1f} mm '
                          'to the side of the aligned position.')
-                lift = [where['release'][0], where['release'][1], where['release'][2] + 0.008]
-                self.go('Lift and shift to try again', lift, where['yaw'])
+                self.go('Lift and shift to try again', where['fine'], where['yaw'])
         return where
 
     def place_brick(self):
         """Set the brick down where it measurably was (or where the row measurably goes): carry it over, come down to the height
-        the pick stopped at, align by the measured hand position, press it in, let go, back off."""
+        the pick stopped at and align by the measured hand position, come down to a second stop 8 mm above the seat and align
+        again (a short descent drags the hand sideways by a few tenths of a mm, a long one by 2 mm and not the same every time),
+        press it in, let go, back off."""
+        fine_height = float(self.c.get('place_fine_height', 0.008))
         where = self.place_plan()
+        where['fine'] = [where['release'][0], where['release'][1], where['release'][2] + fine_height]
         target = self.place_hand_target()
         where = self.aim_plan(where, target)
+        drift, span = self.pick_drift()
+        ahead = fine_height / span                     # the share of the pick's descent that is still ahead at the fine stop
         self.show_target()
         self.go('Carry the brick above the place pose', where['above'], where['yaw'])
         self.go('Lower the brick to the alignment height', where['inspect'], where['yaw'])
-        where = self.align_over_place(where, target)
+        coarse = self.align_at(where, 'inspect', target - drift, 'coarse', float(self.c.get('place_align_tolerance', 0.001)),
+                               int(self.c.get('place_align_tries', 2)), float(self.c.get('place_align_max', 0.008)))
+        self.go('Lower the brick to the fine height', where['fine'], where['yaw'])
+        fine = self.align_at(where, 'fine', target - drift * ahead, 'fine', float(self.c.get('place_fine_tolerance', 0.0003)),
+                             int(self.c.get('place_fine_tries', 3)), float(self.c.get('place_fine_max', 0.004)))
+        self.place_trace.update({'drift_mm': [round(float(v) * 1000, 2) for v in drift],
+                                 'coarse_left_mm': round(coarse * 1000, 2), 'fine_left_mm': round(fine * 1000, 2)})
         where = self.lower_for_release(where)
         self.release_hand = np.array(self.mover.hand_pose()[:3, 3], dtype=float)
         self.mover.hand()                       # open: the brick stays where it is
@@ -196,7 +207,6 @@ class AutoMission(pp.Mission):
         if self.on_placed is not None:
             self.on_placed()                    # before the back-off: the slot is taken even if the back-off fails
         self.go('Back off straight up', where['above'], where['yaw'])
-
 
     def save_log(self):
         path = Path(self.c.get('auto_log', AUTO_LOG))
