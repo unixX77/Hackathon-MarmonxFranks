@@ -9,7 +9,9 @@ import numpy as np
 
 # A lone top-layer instance must look like one clean brick (see lone_brick).
 LONE_MIN_VALID_FRACTION = 0.8
-LONE_MIN_SURFACE_FRACTION = 0.8
+# A brick lying across two lower bricks measures ~0.78 here (its edges blend into the bricks
+# below); clean lone bricks measure 0.88-0.94. Height, spread and footprint checks still apply.
+LONE_MIN_SURFACE_FRACTION = 0.7
 LONE_MAX_SURFACE_SPREAD_M = 0.003
 
 

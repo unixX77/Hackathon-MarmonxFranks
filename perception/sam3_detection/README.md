@@ -277,7 +277,7 @@ To fix the colours, recalibrate `PALETTE` on this camera. Take the reference col
 2. Back-project the depth (aligned to colour) to 3D and fit the table plane with RANSAC to the depth around the bricks.
 3. Measure each brick's height above the table (80th percentile of its eroded mask) and keep the bricks within half a brick height of the highest one. This step is in [`top_layer_depth.py`](top_layer_depth.py), which can also be run on its own.
    - The top layer must be supported by `--top-min-support` masks (default 2), so a single noisy high mask cannot hide the real top layer.
-   - Exception: the last brick of a layer is alone. A single mask one brick height above the supported layer is still accepted when its depth shows one clean brick: at least 80% valid depth, at least 80% flat surface with at most 3 mm spread, and a 32 x 16 mm footprint measured from its top-surface depth points (not the mask, so visible side walls do not count). `--no-lone-top-brick` disables this.
+   - Exception: the last brick of a layer is alone. A single mask one brick height above the supported layer is still accepted when its depth shows one clean brick: at least 80% valid depth, at least 70% flat surface with at most 3 mm spread, and a 32 x 16 mm footprint measured from its top-surface depth points (not the mask, so visible side walls do not count). `--no-lone-top-brick` disables this.
 4. Project each kept mask onto the table plane at its height and measure it in millimetres:
    - about 32 x 16 mm: one brick;
    - about 16 mm wide and n x 32 mm long: n touching bricks merged into one mask, split into n bricks;
