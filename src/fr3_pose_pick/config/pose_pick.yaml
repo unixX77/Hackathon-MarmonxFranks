@@ -75,7 +75,8 @@ blocked_sideways: 0.0035
 # all across, so the across value is the rough one. Keep using the inspection stop, then refine with
 #   measure_grasp_offset.py --last 5 --apply <this file>
 # (the corrections you still type are added to this value). The earlier values are in git history.
-tcp_correction_hand: [-0.0130, 0.0045]   # LOCKED 2026-10-26 from the good pick (x -3.0 mm, y -0.5 mm at the stop)
+tcp_correction_hand: [-0.0130, 0.0065]   # LOCKED 2026-10-26 (x -3.0 mm, y -0.5 mm at the stop); across 0.0045 -> 0.0065 at 18:40 on request:
+                                # the fingers hit the brick when picking; across +2 mm is base y -2 mm for a hand at yaw 0
 grasp_force: 40.0                # N. Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
 gripper_speed: 0.02
 # What the gripper reports once the hand has closed. The Franka Hand has NO force sensor (its effort reads 0): the finger
@@ -165,8 +166,14 @@ bin_clearance: 0.0              # m: come to the bin pose from this far above it
 # palletize_drop_height above the seat, let go and move on; nothing is pressed or searched. 'press' seats the brick on the studs
 # (first brick searches the stud cell, see the README).
 palletize_place_mode: drop
-palletize_drop_height: 0.001    # m above the seat where the brick is let go (0.001 = 1 mm; the studs stand 1.7 mm)
+palletize_drop_height: 0.001    # m above the seat where the brick is let go (0.001 = 1 mm; the studs stand 1.7 mm) - used when
+                                # palletize_row_drop_z is null, and for a row measured from an anchor
 palletize_drop_fine: false      # true: also stop 8 mm up and align again before the drop (slower, a few tenths of a mm better)
+# The hand height (m, fr3_link0) where the good row's bricks are let go, instead of "1 mm above the model's seat". At the row (y 0.27 to 0.33)
+# the plate is HIGHER than at the stack: a brick came to rest on its studs with the hand at z=0.0021 .. 0.0052 there, against 0.0010 .. 0.0018
+# at y 0 to 0.03 (log of 2026-10-26 18:14), and the first drop to z=0.001 hit the plate and the controller aborted (18:36). 0.0065 is the
+# highest rest seen (0.0052) plus 1.3 mm. A brick that still touches: raise it; one that falls from too high: lower it. null = the model.
+palletize_row_drop_z: 0.0065
 # The first brick of a row (no anchor): the plate's studs are unknown, so a brick that sits on top of them is tried again at
 # place_first_search_rings rings of place_first_search_step around the aligned position, middle outwards (4 x 1 mm each way = 81 spots,
 # about 3.5 s each, a whole 8 mm stud cell), and the row is taken from where it seats. Later bricks use place_search_tries.

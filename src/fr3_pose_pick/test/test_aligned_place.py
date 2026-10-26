@@ -46,12 +46,15 @@ class Arm:
         self.pos = np.array([0.33, -0.05, 0.22])
         self.seat = None                      # (x, y, z) hand position at which the brick is seated, truth
         self.log, self.opened, self.detached = [], 0, 0
+        self.fail = set()                    # labels whose move the controller aborts, like 'execution failed (status 6, code -6)'
 
     def corrected(self, xyz, yaw):
         ox, oy = sm.hand_frame_to_base(CONFIG['tcp_correction_hand'], yaw)
         return [xyz[0] + ox, xyz[1] + oy, xyz[2]]
 
     def move(self, label, xyz, yaw=None):
+        if label in self.fail:
+            raise RuntimeError(f'{label}: execution failed (status 6, code -6)')
         command = np.array(self.corrected(xyz, 0.0 if yaw is None else yaw))
         error = np.array(self.errors.get(label, (0.0, 0.0, 0.0))) * MM + np.array(self.extra.get(label, (0.0, 0.0, 0.0))) * MM
         landed = command + error
@@ -308,3 +311,27 @@ def test_without_a_drop_height_the_press_place_is_unchanged():
     m = mission()
     m.place_brick()
     assert [e[0] for e in m.mover.log].count('Lower the brick to the place pose') == 1 and m.drop_height is None
+
+
+def test_the_hand_height_of_the_drop_can_be_given_outright():
+    m = drop_mission()
+    m.drop_z = 0.0065                                              # the row's plate is higher than the model's seat: say where
+    m.place_brick()
+    drop = [entry for entry in m.mover.log if entry[0] == 'Lower the brick to the drop height'][0]
+    assert drop[1][2] == pytest.approx(0.0065) and m.mover.opened == 1
+
+
+def test_an_aborted_drop_says_what_to_change_and_does_not_let_go():
+    m = drop_mission()
+    m.mover.fail = {'Lower the brick to the drop height'}
+    with pytest.raises(RuntimeError, match=r'execution failed.*palletize_row_drop_z.*NOT released'):
+        m.place_brick()
+    assert m.mover.opened == 0 and m.mover.detached == 0
+
+
+def test_another_failure_of_that_move_is_not_dressed_up():
+    m = drop_mission()
+    m.mover.move = lambda label, xyz, yaw=None: (_ for _ in ()).throw(RuntimeError('straight line not possible (reached 80 %)'))
+    with pytest.raises(RuntimeError, match='straight line not possible') as problem:
+        m.lower_to_drop(m.place_plan())
+    assert 'palletize_row_drop_z' not in str(problem.value)

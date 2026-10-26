@@ -266,6 +266,18 @@ def test_the_typo_is_caught_before_the_config_or_ROS_are_touched(monkeypatch):
         pp.main()
 
 
+def test_the_pick_correction_moved_the_hand_2_mm_toward_minus_y():
+    """18:40: the fingers hit the brick when picking: base y -2 mm = across +2 mm for a hand at yaw 0."""
+    import importlib.util as util
+    spec = util.spec_from_file_location('sm_pick_y', ROOT / 'scripts' / 'smooth_motion.py')
+    sm = util.module_from_spec(spec)
+    spec.loader.exec_module(sm)
+    before = sm.hand_frame_to_base([-0.0130, 0.0045], 0.0)
+    after = sm.hand_frame_to_base(CONFIG['tcp_correction_hand'], 0.0)
+    assert after[0] - before[0] == pytest.approx(0.0, abs=1e-9) and after[1] - before[1] == pytest.approx(-0.002, abs=1e-9)
+    assert CONFIG['tcp_correction_hand'] == pytest.approx([-0.0130, 0.0065])
+
+
 def test_tcp_correction_must_be_two_small_numbers_in_metres():
     pp.check_tcp_correction({})                                          # absent: fine
     pp.check_tcp_correction({'tcp_correction_hand': [0.0025, -0.0012]})

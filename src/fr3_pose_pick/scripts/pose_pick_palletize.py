@@ -152,6 +152,9 @@ def check_mode(c):
     height = c.get('palletize_drop_height', 0.001)
     if isinstance(height, bool) or not isinstance(height, (int, float)) or not 0.0 <= height <= 0.01:
         raise ValueError('palletize_drop_height is in METRES, 0 to 1 cm (0.001 is 1 mm above the seat)')
+    z = c.get('palletize_row_drop_z')
+    if z is not None and (isinstance(z, bool) or not isinstance(z, (int, float)) or not c['table_top_z'] <= z <= 0.03):
+        raise ValueError('palletize_row_drop_z is the hand height in METRES, between the table surface and 3 cm (0.0065 is 6.5 mm), or null')
     return float(height)
 
 
@@ -189,6 +192,7 @@ class PalletizeMission(auto.AutoMission):
     index = 0
     label = 'G'
     drop = None                                          # drop mode: the height above the seat (m); None: press the brick in
+    drop_z = None                                        # drop mode: the hand height to let go at (m); None: drop above the model's seat
     anchor = False                                       # this brick is the anchor: it only defines the row
     wide = False                                         # press mode: search the studs in rings around the aim
     rings = None                                         # how many rings (None: the whole cell, for the first brick)
@@ -200,6 +204,7 @@ class PalletizeMission(auto.AutoMission):
         self.truth_target = cls.truth                    # None for the very first brick: it is set down relative to its own pick
         self.seat_z = cls.seat_z                         # the row's measured seat height
         self.drop_height = cls.drop
+        self.drop_z = cls.drop_z
         self.drop_fine = bool(self.c.get('palletize_drop_fine', False))
         self.search_wide = cls.wide
         self.search_rings = cls.rings
@@ -248,7 +253,8 @@ class PalletizeMission(auto.AutoMission):
         elif cls.state['origin'] is None:
             # The first brick defines the row, wherever it ended up: the hand's position, angle and height.
             cls.state['origin'] = [round(float(hand[0]), 5), round(float(hand[1]), 5)]
-            cls.state['seat_z'] = round(float(hand[2]), 5)
+            if cls.drop is None:                         # a seated brick measures the seat; a dropped one measures nothing
+                cls.state['seat_z'] = round(float(hand[2]), 5)
             if not cls.state.get('row_yaw_fixed') and self.release_yaw_deg is not None:
                 cls.state['row_yaw_deg'] = round(((float(self.release_yaw_deg) + 90.0) % 180.0) - 90.0, 3)
         elif cls.drop is None and not cls.state.get('anchored') and cls.index > 0:
@@ -472,7 +478,9 @@ def main(argv=None):
         print('Several bricks: the pictures are taken to be from the arm pose it has now (give --ee-pose to say otherwise).', flush=True)
     if len(jobs) > 1:
         print('Plan: ' + ', '.join(f'{n}={label} ({LABELS[label]})' for n, (_, label) in enumerate(jobs, 1)), flush=True)
-    mode = f'drop {drop * 1000:.1f} mm above the seat' if drop is not None else 'press into the studs'
+    row_z = c.get('palletize_row_drop_z')
+    mode = ((f'drop with the hand at z={row_z:.4f}' if row_z is not None else f'drop {drop * 1000:.1f} mm above the seat')
+            if drop is not None else 'press into the studs')
     done = 0
     try:
         for number, (pick, label) in enumerate(jobs, 1):
@@ -526,6 +534,7 @@ def main(argv=None):
             PalletizeMission.anchor, PalletizeMission.seat_z, PalletizeMission.ref = is_anchor, state.get('seat_z'), ref
             PalletizeMission.label = label
             PalletizeMission.drop = None if is_anchor else drop
+            PalletizeMission.drop_z = None if (is_anchor or state.get('anchored')) else c.get('palletize_row_drop_z')
             PalletizeMission.wide = drop is None and not is_anchor
             PalletizeMission.rings = None if state['origin'] is None else int(c.get('place_row_search_rings', 2))
             builtins.input = auto.countdown_input(seconds if number == 1 else 0)         # one countdown per command

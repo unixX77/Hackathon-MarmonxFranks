@@ -88,7 +88,7 @@ class Capture:
     def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4, release_yaw=1.7):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
         self.anchors, self.seat_zs, self.grasp_yaw, self.release_yaw, self.wides = [], [], grasp_yaw, release_yaw, []
-        self.rings, self.drops, self.labels, self.refs, self.bins = [], [], [], [], []
+        self.rings, self.drops, self.labels, self.refs, self.bins, self.drop_zs = [], [], [], [], [], []
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -104,6 +104,7 @@ class Capture:
         self.labels.append(cls.label)
         self.refs.append(cls.ref)
         self.bins.append(cls.bin_pose)
+        self.drop_zs.append(cls.drop_z)
         if cls.bin_pose is not None:                                           # a brick for the bin takes no slot
             return 0
         mission.release_yaw_deg = self.release_yaw
@@ -413,8 +414,8 @@ def test_every_seated_brick_refines_where_the_row_is(run, tmp_path):
 
 
 def test_the_next_bricks_use_the_angle_and_seat_height_of_the_first_that_seated(run, tmp_path):
-    run(PICK, Capture(release_yaw=1.7))
-    code, capture = run(PICK)
+    run(PICK, Capture(release_yaw=1.7), mode='press')
+    code, capture = run(PICK, mode='press')
     argv = capture.calls[0]
     assert argv[argv.index('--place-yaw') + 1] == '1.700000' and capture.seat_zs == [pytest.approx(0.0003)]
 
@@ -636,3 +637,37 @@ def test_the_far_moves_to_and_from_the_bin_run_at_transit_speed():
         assert label in auto.AutoMission.TRANSIT
     assert 'Lower the brick to the bin pose' not in auto.AutoMission.TRANSIT                  # the last bit down stays slow
 
+
+
+# ---------------------------------------------------------------------------- the drop height of the good row (18:40)
+def test_the_good_row_drops_at_a_hand_height_that_is_above_the_plate_there(run, tmp_path, capsys):
+    assert CONFIG['palletize_row_drop_z'] == pytest.approx(0.0065)
+    assert CONFIG['palletize_row_drop_z'] > 0.0052 > 0.0018                       # above the highest rest seen at the row (0.0052)
+    code, capture = run(PICK)
+    assert code == 0 and capture.drop_zs == [pytest.approx(0.0065)]
+    assert 'drop with the hand at z=0.0065' in capsys.readouterr().out
+    code, capture = run(PICK)
+    assert capture.drop_zs == [pytest.approx(0.0065)]
+
+
+def test_an_anchored_row_and_the_anchor_do_not_use_the_absolute_height(run, tmp_path):
+    code, capture = run(ANCHOR)
+    assert capture.drop_zs == [None]                                              # the anchor is put back pressed
+    code, capture = run(PICK)
+    assert capture.drop_zs == [None]                                              # its row has a measured seat: drop above THAT
+
+
+def test_a_dropped_brick_does_not_become_the_rows_seat_height(run, tmp_path):
+    """The release height of a drop is not a seat: storing it would stack every next drop on top of the one before."""
+    run(PICK)
+    state = pal.load_state(tmp_path / 'row.json')
+    assert state['seat_z'] is None
+    code, capture = run(PICK)
+    assert capture.seat_zs == [None]
+
+
+def test_the_row_drop_height_is_checked():
+    assert pal.check_mode(dict(CONFIG, palletize_row_drop_z=None)) == pytest.approx(0.001)
+    for bad in (-0.05, 0.2, 'high', True):
+        with pytest.raises(ValueError, match='palletize_row_drop_z'):
+            pal.check_mode(dict(CONFIG, palletize_row_drop_z=bad))

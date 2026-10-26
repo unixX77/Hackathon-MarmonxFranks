@@ -78,6 +78,7 @@ class AutoMission(pp.Mission):
     search_wide = False            # a row brick: look for the studs in rings around the aligned position (see search_pattern)
     drop_height = None             # 'drop' mode (palletizing): let go this far above the seat, no press and no search
     drop_fine = False              # drop mode: still stop 8 mm up and align again before dropping
+    drop_z = None                  # drop mode: let go with the hand at this height (m) instead of drop_height above the model's seat
     search_rings = None            # how many rings of place_first_search_step (None: place_first_search_rings, the whole 8 mm cell)
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
     TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up',
@@ -232,6 +233,19 @@ class AutoMission(pp.Mission):
                 self.go('Lift and shift to try again', where['fine'], where['yaw'])
         return where
 
+    def lower_to_drop(self, where):
+        """Straight down to the drop height. If the controller aborts the move (the brick touched the plate or a neighbour: the 18:36
+        run) say what to change instead of only 'execution failed'."""
+        try:
+            self.go('Lower the brick to the drop height', where['release'], where['yaw'])
+        except RuntimeError as problem:
+            if 'execution failed' not in str(problem):
+                raise
+            raise RuntimeError(f'{problem}. The last move stopped before the drop height z={where["release"][2]:.4f}: the brick probably '
+                               'touched the plate or a neighbour there. The robot may need its errors recovered in Desk. Raise '
+                               'palletize_row_drop_z (or palletize_drop_height) in the config, and check the brick is still in the hand. '
+                               'The brick was NOT released.') from None
+
     def seated_limit(self):
         """How far above its target the hand may end the press. A seated brick stops AT the seat, which is place_margin's
         depth above the target (1 mm for -0.001); a brick resting on the studs is a stud's height (1.7 mm) higher: the limit
@@ -247,7 +261,8 @@ class AutoMission(pp.Mission):
         where = self.place_plan()
         if self.drop_height is not None:      # drop mode: hover drop_height above the seat and let go, nothing is pressed in
             seat = float(self.seat_z) if self.seat_z is not None else where['grip'][2]
-            pp.apply_nudge(where, 0.0, 0.0, 0.0, seat + float(self.drop_height) - where['release'][2], self.AUTO_KEYS)
+            height = float(self.drop_z) if self.drop_z is not None else seat + float(self.drop_height)
+            pp.apply_nudge(where, 0.0, 0.0, 0.0, height - where['release'][2], self.AUTO_KEYS)
         elif self.seat_z is not None:         # the row's seat height, measured on the anchor brick, not the model's
             lift = float(self.seat_z) + float(self.c.get('place_margin', 0.0)) - where['release'][2]
             if abs(lift) > 0.004:
@@ -267,7 +282,7 @@ class AutoMission(pp.Mission):
         self.place_trace.update({'drift_mm': [round(float(v) * 1000, 2) for v in drift], 'coarse_left_mm': round(coarse * 1000, 2)})
         if self.drop_height is not None and not self.drop_fine:
             # straight down to drop_height above the seat and let go: whatever the studs do, the brick is down, on to the next one
-            self.go('Lower the brick to the drop height', where['release'], where['yaw'])
+            self.lower_to_drop(where)
             self.place_trace['drop_height_mm'] = round(float(self.drop_height) * 1000, 2)
         else:
             self.go('Lower the brick to the fine height', where['fine'], where['yaw'])
@@ -275,7 +290,7 @@ class AutoMission(pp.Mission):
                                  int(self.c.get('place_fine_tries', 3)), float(self.c.get('place_fine_max', 0.004)))
             self.place_trace['fine_left_mm'] = round(fine * 1000, 2)
             if self.drop_height is not None:
-                self.go('Lower the brick to the drop height', where['release'], where['yaw'])
+                self.lower_to_drop(where)
                 self.place_trace['drop_height_mm'] = round(float(self.drop_height) * 1000, 2)
             else:
                 where = self.lower_for_release(where)

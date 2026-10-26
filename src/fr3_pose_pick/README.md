@@ -267,6 +267,20 @@ same config, so every locked value (grasp height, centring, place height, grasp 
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
 
+## The pick moved 2 mm toward -y, and the good row drops higher (2026-10-26 18:40)
+
+The fingers hit the brick when picking (the hand landed 3 mm further toward -y than in the earlier picks: `dy=-1.8` at the grasp against
++0.9 to +1.7, and the fingers read 17.2 mm: the brick was caught crooked). The centring `tcp_correction_hand` across went 0.0045 -> 0.0065,
+which is base y -2 mm for a hand at yaw 0 (the along part, -0.0130, is unchanged). It is in the config, so it applies to every pick; if a
+pick still touches the brick, tell which side and by how much. The bin pose is not affected (the hand goes exactly to the recorded pose).
+
+At the good row (y 0.27 to 0.33) the plate is higher than at the stack: bricks came to rest on the studs with the hand at z=0.0021 to
+0.0052 there, against 0.0010 to 0.0018 at y 0 to 0.03 (log 18:14). The drop to z=0.001 at 18:36 hit the plate and the controller aborted
+("execution failed (status 6, code -6)"). `palletize_row_drop_z: 0.0065` (highest rest 0.0052 + 1.3 mm) now says where the hand lets go
+for a good row (null: 1 mm above the model's seat). A drop that still aborts says so and names the setting; the arm may then need its
+errors recovered in Desk. A dropped brick no longer stores its release height as the row's seat height (that would have stacked every
+next drop on the one before).
+
 ## Bad bricks go to a recorded BIN pose (2026-10-26 18:27)
 
 Move the arm to where the bad bricks should be dropped (hand pointing down), hold it still, and record the pose under the name `bin`:
