@@ -294,6 +294,28 @@ the bricks go into a ROW instead of back where they were picked:
 - A failure stops the batch at that brick and says how many bricks are already in the row; the slot is taken at the release, before
   the back-off, so a failed back-off does not lose it.
 
+## Starting the row from an anchor brick (why the first brick would not seat), speed, countdown
+
+The 17:36 palletizing runs aligned the hand to 0.02 mm and still stopped 2.0 to 2.6 mm above the seat, at nearly the same height after
+every sideways retry (z=0.0012 to 0.0018): the brick sat on top of the studs and a shift of 0.7 to 1.0 mm did not find them. The robot
+cannot see the studs of the plate the row is on; they repeat every 8 mm (0.098 m is 12.25 of them) and the plate may be turned a degree or
+two from the stack's, while the put-back onto the stack worked because it returns to a seat the brick had just left. The sideways
+"back and forth in x" is that retry (`place_search_*`: lift, shift 0.7 mm, press again, now 4 tries instead of 6), not a sensor.
+
+The fix does not guess the grid: press ONE brick onto the row's plate by hand, where the row should start, and give its camera numbers:
+
+    ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml --anchor X Y Z A
+
+The robot picks it up and puts it back (the seat-to-seat put-back that works) and measures from it: the row origin is the hand position
+at the grasp, the row angle is the hand angle at the grasp, `seat_z` is the hand height at the grasp. The anchor is slot 1; the next
+bricks go one pitch (brick width + gap) further along +y, at that angle and that seat height (the press goes to `seat_z + place_margin`,
+refused if it is more than 4 mm from the model). Needs an empty row (`--reset` first). `--status` shows "measured from the anchor brick".
+
+Also in this version: the far moves (hover, lift, carry, back off) run at `transit_velocity_scale` (0.10, at most 0.2) while the approach,
+the alignments and the press keep `velocity_scale` (0.05); the countdown is once per command (the next `--brick` of a command follow at
+once); and a press that ends more than `-place_margin + 0.8 mm` (1.8 mm) above its target counts as "on the studs" (it was 2.0 mm, which
+let +2.0 pass as seated).
+
 ## The place by measured position (why the brick sat on top of the studs)
 
 The 16:23 autonomous run put a layer-2 brick back 1.7 mm high, ON its studs (hand stopped at z=0.0115, seat 0.0098): the arm

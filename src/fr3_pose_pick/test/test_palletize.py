@@ -85,8 +85,9 @@ def test_the_status_shows_the_slots_and_the_room_left(tmp_path):
 # ------------------------------------------------------------------------------------------- the arguments
 class Capture:
     """Stands in for pose_pick.main: records what it was given and plays the part of the mission's release."""
-    def __init__(self, fail_on=None, hand=(0.4395, -0.0192)):
+    def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
+        self.anchors, self.seat_zs, self.grasp_yaw = [], [], grasp_yaw
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -94,6 +95,10 @@ class Capture:
             raise RuntimeError('Lower the brick to the place pose: the hand stopped +2.7 mm above its target')
         cls = pal.PalletizeMission
         mission = cls.__new__(cls)
+        self.anchors.append(cls.anchor)
+        self.seat_zs.append(cls.seat_z)
+        mission.grasp_pick = np.array([0.4263, -0.0056, 0.0002])           # the hand's measured pose at the grasp
+        mission.grasp_hand_yaw_deg = self.grasp_yaw
         mission.release_hand = np.array([self.hand[0], self.hand[1] + (len(cls.state['placed']) * 0.032), 0.0])
         mission.say = lambda text: None
         mission.on_placed = mission.record_slot
@@ -150,7 +155,7 @@ def test_several_bricks_in_one_command_fill_consecutive_slots(run, tmp_path):
     assert '--place-offset' in capture.calls[0] and '--place-offset' not in capture.calls[1]
     ys = [float(call[call.index('--place') + 2]) for call in capture.calls[1:]]
     assert ys == pytest.approx([-0.0192 + 0.032, -0.0192 + 0.064], abs=1e-6)
-    assert capture.countdowns == [9, 3, 3]                                                   # the full countdown once, then 3 s
+    assert capture.countdowns == [9, 0, 0]                                                   # one countdown per command, then at once
     assert [e['slot'] for e in pal.load_state(tmp_path / 'row.json')['placed']] == [1, 2, 3]
 
 
@@ -287,3 +292,74 @@ def test_with_an_ee_pose_the_lookup_is_left_alone(run, monkeypatch):
     code, _ = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0', '--brick', '0.0877', '-0.0416', '0.2610', '-86.4',
                    '--brick', '0.09', '-0.03', '0.26', '-85'], capture)
     assert code == 0 and pp.lookup_hand is marker
+
+
+# --------------------------------------------------------------------------------------------- the anchor
+ANCHOR = ['--anchor', '0.1', '-0.03', '0.17', '-88']
+PICK = ['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4']
+
+
+def test_the_anchor_defines_the_row_from_a_brick_that_is_seated(run, tmp_path):
+    code, capture = run(ANCHOR)
+    assert code == 0 and capture.anchors == [True]
+    argv = capture.calls[0]
+    assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == ['--place-offset', '0', '0']
+    assert argv[argv.index('--place-layers') + 1] == 'same' and '--place-yaw' not in argv       # put back exactly where it was
+    state = pal.load_state(tmp_path / 'row.json')
+    assert state['anchored'] and state['origin'] == [0.4263, -0.0056]                          # the measured grasp, not a guess
+    assert state['row_yaw_deg'] == pytest.approx(2.4) and state['seat_z'] == pytest.approx(0.0002)
+    assert [e['slot'] for e in state['placed']] == [1]
+
+
+def test_the_next_bricks_follow_the_anchor_at_its_angle_and_seat_height(run, tmp_path):
+    run(ANCHOR)
+    code, capture = run(PICK)
+    argv = capture.calls[0]
+    place = argv.index('--place')
+    assert (float(argv[place + 1]), float(argv[place + 2])) == pytest.approx((0.4263, -0.0056 + 0.032))   # slot 2, one pitch on
+    assert argv[argv.index('--place-yaw') + 1] == '2.400000'                                       # the anchor's angle, not 0
+    assert capture.anchors == [False] and capture.seat_zs == [pytest.approx(0.0002)]              # and its measured seat height
+
+
+@pytest.mark.parametrize('yaw, expected', [(2.4, 2.4), (-3.0, -3.0), (178.0, -2.0), (-178.0, 2.0), (90.0, -90.0)])
+def test_the_anchor_angle_is_a_line_between_minus_90_and_90(run, tmp_path, yaw, expected):
+    run(ANCHOR, Capture(grasp_yaw=yaw))
+    assert pal.load_state(tmp_path / 'row.json')['row_yaw_deg'] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize('extra, message', [
+    (['--brick', '1', '2', '3', '4'], 'anchor is the brick'),
+    (['--camera-xyz', '0', '0', '0.3'], 'anchor is the brick'),
+    (['--start-offset', '0', '0.1'], 'leave out --start-offset'),
+    (['--row-yaw', '3'], 'leave out --start-offset'),
+])
+def test_the_anchor_is_refused_with_other_ways_to_say_where(run, extra, message, capsys):
+    code, capture = run(ANCHOR + extra)
+    assert code == 2 and not capture.calls and message in capsys.readouterr().err
+
+
+def test_an_anchor_needs_an_empty_row_and_a_reset_makes_one(run, tmp_path, capsys):
+    run(PICK)                                                                                      # a row with one brick
+    code, capture = run(ANCHOR)
+    assert code == 2 and 'Use --reset first' in capsys.readouterr().err and not capture.calls
+    code, capture = run(['--reset'] + ANCHOR)                                                      # forget it and start from the anchor
+    assert code == 0 and capture.anchors == [True]
+    state = pal.load_state(tmp_path / 'row.json')
+    assert state['anchored'] and len(state['placed']) == 1
+
+
+def test_the_status_says_when_a_row_is_measured_from_an_anchor(run, tmp_path, capsys):
+    run(ANCHOR)
+    capsys.readouterr()
+    run(['--status'])
+    out = capsys.readouterr().out
+    assert 'measured from the anchor brick, seat height z=0.0002' in out and 'long side at 2.4 deg' in out
+
+
+def test_an_old_row_file_without_the_new_fields_still_loads(tmp_path):
+    path, state = started(tmp_path, placed=1)
+    saved = json.loads(path.read_text())
+    saved.pop('seat_z'), saved.pop('anchored')
+    path.write_text(json.dumps(saved))
+    loaded = pal.load_state(path)
+    assert loaded['seat_z'] is None and loaded['anchored'] is False

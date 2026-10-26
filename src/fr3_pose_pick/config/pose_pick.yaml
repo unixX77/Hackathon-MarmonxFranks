@@ -147,7 +147,8 @@ place_fine_tolerance: 0.0003    # m: stop nudging at the fine stop when the meas
 place_fine_tries: 3             # at most this many corrections at the fine stop before going on
 place_fine_max: 0.004           # m: a bigger gap than this at the fine stop means something is wrong: stop
 place_search_step: 0.0007       # m: a brick sitting on top of the studs is tried again shifted by this much, in a small spiral
-place_search_tries: 6           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand
+place_search_tries: 4           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand
+                                # (6 never found a seat that 0 did not: the miss is the plate's grid, not a few tenths of a mm)
 
 # Palletizing (pose_pick_palletize.py): where the FIRST brick of a new row goes, from where it was picked (m; x, y in the base
 # frame, +y = to the robot's left). Set 2026-10-26 on request: 10 cm away in +y, less the 2 mm asked for earlier = 0.098. A stud is
@@ -155,3 +156,7 @@ place_search_tries: 6           # at most this many shifted tries (up to 8) befo
 # off the stack's grid by that much. Only a NEW row reads this: a started row keeps its own (--reset starts again).
 # --start-offset DX DY overrides it for one row.
 palletize_start_offset: [0.0, 0.098]
+
+# Autonomous speed: moves far from the brick and the plate (hover, lift, carry, back off) run at this fraction of the full joint
+# speed; the approach to the brick, the alignment and the press keep velocity_scale. At most 0.2 (the arm is carrying a brick).
+transit_velocity_scale: 0.10

@@ -57,6 +57,16 @@ def place_given(args):
     return any(arg.split('=', 1)[0] in PLACE_OPTIONS for arg in args)
 
 
+def check_auto_settings(c):
+    """The settings only the autonomous scripts read. Raises ValueError before anything moves."""
+    transit = c.get('transit_velocity_scale')
+    if transit is not None and (isinstance(transit, bool) or not isinstance(transit, (int, float)) or not 0 < transit <= 0.2):
+        raise ValueError('transit_velocity_scale must be a fraction of the full speed, above 0 and at most 0.2 (0.1 is 10 %)')
+    fine = float(c.get('place_fine_height', 0.008))
+    if not 0.004 <= fine < float(c.get('inspect_height', 0.04)):
+        raise ValueError('place_fine_height must be from 4 mm (clear of the studs) to below inspect_height (metres: 0.008 is 8 mm)')
+
+
 class GraspNotConfirmed(RuntimeError):
     """The gripper's finger width does not fit a held brick (missed, slipping or dropped)."""
 
@@ -64,7 +74,9 @@ class GraspNotConfirmed(RuntimeError):
 class AutoMission(pp.Mission):
     """The Mission of pose_pick.py with its own log and a stop-and-explain failure path. Same motions."""
 
-    stage_pick = grasp_pick = truth_target = release_hand = None      # filled in by the run (see __init__)
+    stage_pick = grasp_pick = truth_target = release_hand = seat_z = None      # filled in by the run (see __init__)
+    # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
+    TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -74,16 +86,31 @@ class AutoMission(pp.Mission):
         self.truth_target = None      # palletizing: where the hand must really be at the release (x, y), robot coordinates
         self.release_hand = None      # measured hand position at the release
         self.place_trace = {}
-        fine = float(self.c.get('place_fine_height', 0.008))
-        if not 0.004 <= fine < float(self.c.get('inspect_height', 0.04)):
-            raise ValueError('place_fine_height must be from 4 mm (clear of the studs) to below inspect_height (metres: 0.008 is 8 mm)')
+        check_auto_settings(self.c)
 
     def grasp_alert(self, when, problem):
         raise GraspNotConfirmed(f'Grasp not confirmed {when}: {problem}. The brick was not carried on.')
 
     # ------------------------------------------------------------------------------------- the pick, measured
-    def go(self, label, xyz, yaw=None, watch_blocked=False):
-        super().go(label, xyz, yaw, watch_blocked)
+    def go(self, label, xyz, yaw=None, watch_blocked=False, blocked_height=None):
+        """Mission.go, with the far-away moves (TRANSIT) at transit_velocity_scale and, if given, another limit for
+        'stopped short of the target'. The slow approach and the press keep velocity_scale."""
+        normal = getattr(self.mover, 'scale', None)
+        if label in self.TRANSIT and normal is not None and self.c.get('transit_velocity_scale') is not None:
+            self.mover.scale = max(normal, float(self.c['transit_velocity_scale']))
+        kept = self.c.get('blocked_height')
+        if blocked_height is not None:
+            self.c['blocked_height'] = blocked_height
+        try:
+            super().go(label, xyz, yaw, watch_blocked)
+        finally:
+            if normal is not None:
+                self.mover.scale = normal
+            if blocked_height is not None:
+                if kept is None:
+                    self.c.pop('blocked_height', None)
+                else:
+                    self.c['blocked_height'] = kept
         if label == 'Come down to the inspection height':             # where the hand really is, not where it was sent
             self.stage_pick = np.array(self.mover.hand_pose()[:3, 3], dtype=float)
         elif label == 'Lower to the brick':
@@ -159,7 +186,8 @@ class AutoMission(pp.Mission):
         pattern = self.SEARCH[:tries + 1]
         for k, (ux, uy) in enumerate(pattern):
             try:
-                self.go('Lower the brick to the place pose', where['release'], where['yaw'], watch_blocked=True)
+                self.go('Lower the brick to the place pose', where['release'], where['yaw'], watch_blocked=True,
+                        blocked_height=self.seated_limit())
                 self.place_trace['search_tries'] = k
                 if k:
                     self.say(f'The brick went in after {k} shifted tries.')
@@ -177,6 +205,12 @@ class AutoMission(pp.Mission):
                 self.go('Lift and shift to try again', where['fine'], where['yaw'])
         return where
 
+    def seated_limit(self):
+        """How far above its target the hand may end the press. A seated brick stops AT the seat, which is place_margin's
+        depth above the target (1 mm for -0.001); a brick resting on the studs is a stud's height (1.7 mm) higher: the limit
+        is between the two (it was 2.0 mm before, which let a brick on the studs pass at +2.0)."""
+        return max(0.0012, -float(self.c.get('place_margin', 0.0)) + 0.0008)
+
     def place_brick(self):
         """Set the brick down where it measurably was (or where the row measurably goes): carry it over, come down to the height
         the pick stopped at and align by the measured hand position, come down to a second stop 8 mm above the seat and align
@@ -184,6 +218,12 @@ class AutoMission(pp.Mission):
         press it in, let go, back off."""
         fine_height = float(self.c.get('place_fine_height', 0.008))
         where = self.place_plan()
+        if self.seat_z is not None:           # the row's seat height, measured on the anchor brick, not the model's
+            lift = float(self.seat_z) + float(self.c.get('place_margin', 0.0)) - where['release'][2]
+            if abs(lift) > 0.004:
+                raise RuntimeError(f'The measured seat height of the row is {lift * 1000:+.1f} mm from the model: more than 4 mm '
+                                   'means the anchor brick or the plate is not what the config says. Nothing was moved.')
+            pp.apply_nudge(where, 0.0, 0.0, 0.0, lift, self.AUTO_KEYS)
         where['fine'] = [where['release'][0], where['release'][1], where['release'][2] + fine_height]
         target = self.place_hand_target()
         where = self.aim_plan(where, target)
@@ -248,6 +288,9 @@ def countdown_input(seconds):
         if 'Type GO' not in str(prompt):
             raise RuntimeError(f'the autonomous script never asks questions, but something asked {str(prompt)!r}. '
                                'Nothing was answered for you; run pose_pick.py for an interactive run.')
+        if seconds <= 0:
+            print('AUTONOMOUS: next brick, no countdown (Ctrl+C or the e-stop cancels).', flush=True)
+            return 'GO'
         print('AUTONOMOUS: no questions, no corrections. Hold the e-stop, clear the workspace.\n'
               f'The arm starts in {seconds} s; Ctrl+C or the e-stop cancels.', flush=True)
         for left in range(seconds, 0, -1):

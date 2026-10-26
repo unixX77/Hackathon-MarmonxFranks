@@ -193,9 +193,10 @@ def test_a_brick_on_top_of_the_studs_is_shifted_and_pressed_again():
 def test_when_nothing_works_the_brick_stays_in_the_hand():
     m = mission(extra={'Lower the brick to the place pose': (0.0, 4.0, 0.0)},
                 config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0, 'place_fine_tolerance': 1.0})
-    with pytest.raises(RuntimeError, match=r'NOT released.*after 7 tries'):
+    tries = CONFIG['place_search_tries'] + 1
+    with pytest.raises(RuntimeError, match=rf'NOT released.*after {tries} tries'):
         m.place_brick()
-    assert len(m.blocked) == 7 and m.mover.opened == 0 and m.mover.detached == 0
+    assert len(m.blocked) == tries and m.mover.opened == 0 and m.mover.detached == 0
 
 
 def test_an_alignment_stop_far_from_the_target_stops_the_run():
