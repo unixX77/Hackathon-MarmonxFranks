@@ -13,4 +13,5 @@ __pycache__/
 pallet_state.json
 pose_pick_offsets.json
 pose_pick_auto_log.json
+pose_pick_palletize.json
 *.bak

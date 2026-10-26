@@ -136,3 +136,11 @@ max_total_nudge_z: 0.015        # ... and 15 mm in total
 # face at z=-0.02 = table_top_z. Delete both lines to remove it.
 base_pad_size: [0.223, 0.188, 0.020]
 base_pad_center: [-0.0414, 0.0, -0.010]
+
+# ---- Autonomous place (pose_pick_auto.py, pose_pick_palletize.py) ------------------------------------------------------------
+# The brick is set down where the hand MEASURABLY must be, not where the arm is told to go (it lands 1 to 2 mm off).
+place_align_tolerance: 0.0004   # m: stop nudging when the measured hand is this close (x, y) to where it must be
+place_align_tries: 3            # at most this many alignment corrections before going on
+place_align_max: 0.008          # m: a bigger gap than this at the alignment stop means the pose or the arm is wrong: stop
+place_search_step: 0.0007       # m: a brick sitting on top of the studs is tried again shifted by this much, in a small spiral
+place_search_tries: 6           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand

@@ -267,6 +267,42 @@ same config, so every locked value (grasp height, centring, place height, grasp 
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
 
+## Incremental palletizing: `pose_pick_palletize.py`
+
+Same autonomous machinery as `pose_pick_auto.py` (no questions, countdown, every safety check, gripper width confirms the grasp), but
+the bricks go into a ROW instead of back where they were picked:
+
+    ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml --camera-xyz X Y Z --camera-angle A
+    # or several bricks in one command (the arm moves between them, so give the pose the pictures were taken from):
+    ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+        --ee-pose X Y Z QX QY QZ QW --brick X1 Y1 Z1 A1 --brick X2 Y2 Z2 A2 --brick X3 Y3 Z3 A3
+
+- The first brick is set down `--start-offset` from where it was picked (default `0 0.08`: 8 cm to the robot's left, along +y, clear of
+  the stack), on the table / baseplate. Every next brick goes NEXT to the one before, along +y, `--gap` apart (default 16 mm, so the
+  centres are 32 mm apart), long side along x (`--row-yaw 0`).
+- The row is remembered in `pose_pick_palletize.json` (gitignored): each command, or each `--brick`, takes the next slot. Slot 1 is
+  wherever the first brick really ended up (the measured hand position at the release); the others are exact multiples of the pitch from
+  it, so the row stays straight even though every brick is picked with the camera's 3 mm of error. The gap, offset and angle are fixed by
+  the first brick (`--reset` starts a new row).
+- `--status` shows the row and the room left, `--shift DX DY` moves the whole row by up to 1 cm (a few mm if the first brick did not
+  line up with the baseplate's studs), `--reset` forgets it. None of them moves the arm.
+- If `finger_tip_thickness` / `finger_tip_width` are set in the config, the script checks that a finger fits between two bricks `--gap`
+  apart; otherwise it says that was not checked.
+- A failure stops the batch at that brick and says how many bricks are already in the row; the slot is taken at the release, before
+  the back-off, so a failed back-off does not lose it.
+
+## The place by measured position (why the brick sat on top of the studs)
+
+The 16:23 autonomous run put a layer-2 brick back 1.7 mm high, ON its studs (hand stopped at z=0.0115, seat 0.0098): the arm
+had landed (-0.6, +1.1) mm from its target at the pick but (+0.8, +0.3) at the place, because the place came down in one 10 cm line
+and the pick in two steps, and a brick needs about 0.5 mm to drop onto its studs. The place in `pose_pick_auto.py` and
+`pose_pick_palletize.py` now: records the hand's MEASURED position at the pick's 4 cm stop and at the grasp; at the place comes
+down to the same 4 cm stop; nudges x and y (up to `place_align_tries` times, to `place_align_tolerance` 0.4 mm) until the measured
+hand is where it must be so that the same straight descent, which drags the hand sideways by the same ~1 mm, ends on the measured
+grasp pose; presses the brick in; and if it still stops short (it sits on the studs) lifts 8 mm and tries again shifted by
+`place_search_step` (0.7 mm) in a small spiral, up to `place_search_tries` times, before it stops with the brick still in the hand.
+Everything is in the log (`place`: alignment left, drift, tries). Not tried on the real arm yet.
+
 ## The place stopped at 95 %: the planning-scene table sits 3.5 mm low (`scene_table_sink`)
 
 A place with `place_margin: -0.001` presses the brick 1 mm onto the studs. MoveIt checks the attached brick against the table box
