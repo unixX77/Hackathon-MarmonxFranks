@@ -27,6 +27,11 @@ def main():
     p.add_argument('--second-opinion',action='store_true',
                    help='Ask Claude (vision) to check the final colours; needs the anthropic package and an API key')
     p.add_argument('--second-opinion-effort',default='medium',choices=['low','medium','high','xhigh','max'])
+    p.add_argument('--review',action='store_true',
+                   help='Claude Code (claude -p) checks the result, fixes wrong colours, drops wrong masks; '
+                        'adds its result to preview.png')
+    p.add_argument('--review-model',default='opus')
+    p.add_argument('--review-effort',default='medium',choices=['low','medium','high','xhigh','max'])
     p.add_argument('--detector-args',nargs=argparse.REMAINDER,default=[])
     a=p.parse_args()
     recording=a.recording.resolve() if a.recording else None
@@ -66,12 +71,21 @@ def main():
                 if review(destination,a.second_opinion_effort):bricks_file=destination/'bricks_second_opinion.json'
             except Exception as error:  # the classifier result stands on its own
                 print(f'Second opinion skipped: {error}')
+        if a.review:
+            sys.path.insert(0,str(ROOT/'classifier'))
+            from claude_review import review
+            try:
+                bricks_file=review(destination,a.review_model,a.review_effort) or bricks_file
+            except Exception as error:  # the classifier result stands on its own
+                print(f'Claude review skipped: {error}')
         final=[b for b in json.loads(bricks_file.read_text())['bricks'] if b.get('id')]
         print(f'\n{len(final)} bricks. x y z = top-face centre in camera_color_optical_frame (m); '
               'angle = long side in the image from +x (right) toward +y (down), deg in (-90, 90]')
         for brick in final:
             opinion=brick.get('second_opinion',{})
-            print(pose_line(brick)+(f"  CHECK: Claude says {opinion['colour']}" if opinion.get('status')=='disagree' else ''))
+            fixed=brick.get('claude_review',{})
+            print(pose_line(brick)+(f"  CHECK: Claude says {opinion['colour']}" if opinion.get('status')=='disagree' else '')
+                  +(f"  (Claude corrected from {fixed['classifier_colour']})" if fixed.get('action')=='recoloured' else ''))
         print('\nFinal results:',destination)
     except Exception as error:
         (output/'INCOMPLETE.json').write_text(json.dumps({'error':str(error)},indent=2))
