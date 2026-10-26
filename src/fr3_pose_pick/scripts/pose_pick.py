@@ -345,6 +345,16 @@ def convert_camera_angle(c, angle_deg):
     return sign * float(angle_deg) + float(offset)
 
 
+def check_pick_open_width(c):
+    """pick_open_width (optional): the hand opens this wide for the pick descent, so the jaws have room to land on
+    both sides of the brick; closing to grasp_width then centres the brick across. Between open_width and 8 cm."""
+    width = c.get('pick_open_width')
+    if width is None:
+        return
+    if isinstance(width, bool) or not isinstance(width, (int, float)) or not c['open_width'] <= width <= 0.08:
+        raise ValueError(f'pick_open_width must be between open_width ({c["open_width"] * 1000:.0f} mm) and 80 mm, in METRES')
+
+
 def check_tcp_correction(c):
     """tcp_correction_hand must be two small numbers (metres). More than 1 cm is a typo or a unit mistake."""
     value = c.get('tcp_correction_hand')
@@ -454,6 +464,14 @@ def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_
     return float(top[0]), float(top[1]), centre_z, yaw
 
 
+class Blocked(RuntimeError):
+    """The hand did not get where it was sent on a downward move: something is in the way."""
+
+    def __init__(self, message, info):
+        super().__init__(message)
+        self.info = info
+
+
 class Mission:
     def __init__(self, node, c, plan, buffer, inspect, given, place=None, on_placed=None, place_inspect=False):
         from visualization_msgs.msg import Marker
@@ -462,6 +480,7 @@ class Mission:
         self.node, self.c, self.plan, self.inspect, self.given = node, c, plan, inspect, given
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
         self.on_placed = on_placed    # called once the brick is released (the pallet remembers its slot)
+        self.blocked = []                                # every time the hand was stopped on the way down
         self.place_inspect = place_inspect               # stop above the place spot for corrections
         self.place_nudge = np.zeros(4)                   # total correction at the place: dx, dy (m), dyaw (deg), dz (m)
         self.nudge = np.zeros(4)                                    # total dx, dy (m), dyaw (deg), dz (m)
@@ -522,19 +541,63 @@ class Mission:
                                'arm there in one go.')
         self.say(f'Start check OK: hand is {tilt:.0f} deg from pointing down.')
 
-    def go(self, label, xyz, yaw=None):
-        """One straight, approved move, then compare where the hand really is with the target."""
+    def go(self, label, xyz, yaw=None, watch_blocked=False):
+        """One straight, approved move, then compare where the hand really is with the target.
+        watch_blocked (the final lowering): a hand that stopped short of the target, or was pushed aside, is blocked by
+        something (a finger on the brick, the tips on the plate or studs, a neighbour): raise Blocked instead of going on."""
         commanded = self.mover.move(label, xyz, yaw=self.plan['yaw'] if yaw is None else yaw)
         self.spin(0.5)
-        err = self.mover.hand_pose()[:3, 3] - np.array(commanded if commanded is not None else xyz)
+        hand = self.mover.hand_pose()[:3, 3]
+        err = hand - np.array(commanded if commanded is not None else xyz)
         xy, z = math.hypot(err[0], err[1]), float(err[2])
         self.say(f'  arrived: {xy * 1000:.1f} mm sideways (dx={err[0] * 1000:+.1f} dy={err[1] * 1000:+.1f}), '
                  f'{z * 1000:+.1f} mm in height from the target')
+        if watch_blocked and (z > float(self.c.get('blocked_height', 0.002)) or xy > float(self.c.get('blocked_sideways', 0.0035))):
+            info = {'move': label, 'short_mm': round(z * 1000, 2), 'sideways_mm': round(xy * 1000, 2),
+                    'hand_z': round(float(hand[2]), 5)}
+            raise Blocked(f'{label}: the hand stopped {z * 1000:+.1f} mm above its target and is {xy * 1000:.1f} mm off sideways '
+                          f'(hand height z={hand[2]:.4f}): something is in the way - a finger on top of the brick, or the '
+                          'tips on the plate / its studs / a neighbour.', info)
         if max(xy, abs(z)) > self.c['arrival_abort']:
             raise RuntimeError(f'{label}: the hand is {max(xy, abs(z)) * 1000:.0f} mm from the target '
                                f'(limit {self.c["arrival_abort"] * 1000:.0f} mm); stopping')
         if max(xy, abs(z)) > self.c['arrival_warn']:
             self.say(f'  WARNING: more than {self.c["arrival_warn"] * 1000:.0f} mm off the target')
+
+    def lower_to_brick(self):
+        """Straight down to the grasp height. If the hand is stopped on the way, do NOT close it: lift back to the
+        inspection height and correct again (up to 3 tries)."""
+        for attempt in range(3):
+            try:
+                self.go('Lower to the brick', self.plan['grip'], watch_blocked=True)
+                return
+            except Blocked as problem:
+                self.blocked.append(problem.info)
+                self.say(str(problem))
+                if not self.inspect or attempt == 2:
+                    raise RuntimeError(f'{problem} The hand was NOT closed. Run with the inspection stop to correct '
+                                       'x, y, z, yaw, or check fingertip_below_tcp / baseplate_thickness.') from None
+                self.say('Not closing the hand. Lifting back to the inspection height: correct x / y / yaw / z, then ok.')
+                self.go('Lift back to the inspection height', self.plan['inspect'])
+                self.correct_offset()
+
+    def lower_for_release(self, where):
+        """Straight down to the release height; a blocked brick is NOT released in the air: lift back to the place
+        inspection height and correct again. Returns the (possibly corrected) place plan."""
+        for attempt in range(3):
+            try:
+                self.go('Lower the brick to the place pose', where['release'], where['yaw'], watch_blocked=True)
+                return where
+            except Blocked as problem:
+                self.blocked.append(problem.info)
+                self.say(str(problem))
+                if not self.place_inspect or attempt == 2:
+                    raise RuntimeError(f'{problem} The brick was NOT released (it is still in the hand).') from None
+                self.say('Not releasing the brick. Lifting back to the place inspection height: correct, then ok.')
+                self.go('Lift back to the place inspection height', self.place_plan()['place_inspect'], where['yaw'])
+                self.correct_place()
+                where = self.place_plan()
+        return where
 
     def correct_offset(self):
         from smooth_motion import StepAbort
@@ -624,7 +687,8 @@ class Mission:
                  'correction_yaw_deg': float(self.nudge[2]), 'correction_dz_m': float(self.nudge[3]),
                  'final_grip_xyz': self.plan['grip'], 'final_yaw_deg': math.degrees(self.plan['yaw']),
                  'hand_yaw_deg': self.grasp_hand_yaw_deg,
-                 'tcp_correction_used': list(self.c.get('tcp_correction_hand') or [0.0, 0.0])}
+                 'tcp_correction_used': list(self.c.get('tcp_correction_hand') or [0.0, 0.0]),
+                 'blocked': self.blocked}
         if self.place is not None:
             where = self.place_plan()
             entry['place_xyz'], entry['place_yaw_deg'] = where['grip'], math.degrees(where['yaw'])
@@ -644,7 +708,7 @@ class Mission:
             self.go('Lower the brick to the place inspection height', where['place_inspect'], where['yaw'])
             self.correct_place()
             where = self.place_plan()           # with the corrections
-        self.go('Lower the brick to the place pose', where['release'], where['yaw'])
+        where = self.lower_for_release(where)
         self.mover.hand()                       # open: the brick stays where it is
         self.mover.detach_block()
         self.say('Brick released')
@@ -658,14 +722,14 @@ class Mission:
             self.show_target()
             self.spin(0.1)
         self.preflight()
-        self.mover.hand()
+        self.mover.hand(width=self.c.get('pick_open_width'))        # wider than open_width if configured (more room to land)
         self.go('Hover above the brick', p['above'])
         self.go('Come down to the inspection height', p['inspect'])
         if self.inspect:
             self.correct_offset()
         self.say(f'Correction needed: dx={self.nudge[0] * 1000:+.1f} mm dy={self.nudge[1] * 1000:+.1f} mm '
                  f'dz={self.nudge[3] * 1000:+.1f} mm dyaw={self.nudge[2]:+.1f} deg')
-        self.go('Lower to the brick', p['grip'])
+        self.lower_to_brick()
         from smooth_motion import hand_yaw
         self.grasp_hand_yaw_deg = math.degrees(hand_yaw(self.mover.hand_pose()[:3, :3]))   # for measure_grasp_offset.py
         self.mover.hand(close=True)
@@ -799,6 +863,7 @@ def main():
     c = yaml.safe_load(open(args.config, encoding='utf-8'))
     apply_baseplate(c)
     check_tool_geometry(c)
+    check_pick_open_width(c)
     check_tcp_correction(c)
     convert_camera_angle(c, 0.0)                    # validates camera_angle_sign / camera_angle_offset_deg
     yaw = None
@@ -950,8 +1015,12 @@ def main():
         if c.get('_baseplate_applied'):
             print(f'Baseplate: bricks stand {c["baseplate_thickness"] * 1000:.1f} mm above the table surface.')
         note = jaw_clearance_note(c)
-        if note:
+        if note and c.get('pick_open_width') is None:
             print(note)
+        if c.get('pick_open_width') is not None:
+            print(f'The hand opens to {c["pick_open_width"] * 1000:.0f} mm for the pick (pick_open_width) and closes to '
+                  f'{c["grasp_width"] * 1000:.0f} mm, which centres the brick across; it opens to '
+                  f'{c["open_width"] * 1000:.0f} mm at the release.')
         correction = c.get('tcp_correction_hand')
         if correction and any(correction):
             print(f'Grasp centring in force (tcp_correction_hand, hand frame): along the long side '

@@ -24,11 +24,12 @@ def mission(answers=(), inspect=True, place=None):
     m.plan = pp.plan_pick(CONFIG, 0.40, 0.036)
     m.place = place or {'offset': (0.0, 0.07), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None}
     m.place_nudge = np.zeros(4)
+    m.blocked = []
     m.place_inspect = inspect
     m.on_placed = lambda: log.append(('placed',))
     m.say = lambda text: None
     m.show_target = lambda: None
-    m.go = lambda label, xyz, yaw=None: log.append(('go', label, [round(v, 5) for v in xyz]))
+    m.go = lambda label, xyz, yaw=None, watch_blocked=False: log.append(('go', label, [round(v, 5) for v in xyz]))
     m.mover = types.SimpleNamespace(hand=lambda close=False: log.append(('hand', 'close' if close else 'open')),
                                     detach_block=lambda: log.append(('detach',)))
     m.answers = list(answers)

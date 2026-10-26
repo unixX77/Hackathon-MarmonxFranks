@@ -307,10 +307,12 @@ class Mover:
                                f'code {result.result.error_code.val})')
 
     # -------------------------------------------------------------------- hand
-    def hand(self, close=False):
+    def hand(self, close=False, width=None):
+        """Open (to `width`, default open_width) or close (to grasp_width) the hand."""
         from action_msgs.msg import GoalStatus
         from franka_msgs.action import Grasp, Move
-        width = self.c['grasp_width'] if close else self.c['open_width']
+        if width is None:
+            width = self.c['grasp_width'] if close else self.c['open_width']
         self.ask_step('Close the hand on the brick' if close else 'Open the hand',
                       f'Hand to {width * 1000:.0f} mm' + (f' with {self.c["grasp_force"]:.0f} N' if close else ''))
         goal = Grasp.Goal() if close else Move.Goal()

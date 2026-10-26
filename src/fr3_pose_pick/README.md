@@ -231,6 +231,31 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
   as good as that.
 
+## The hand stops on the way down: it is never closed on, and the brick is never released in the air
+
+The last move before the grasp (and before the release) is a straight vertical line. If the hand ends it more than
+`blocked_height` (2 mm) short of the target or pushed more than `blocked_sideways` (3.5 mm) aside, something is in the
+way: a finger on top of the brick, the tips on the plate or its studs, a neighbouring brick. Before this check the run
+only printed a warning and closed the hand anyway. Now it prints the height where the hand stopped, **does not close**
+(or release), lifts straight back to the inspection stop and asks for a correction (3 tries), at the pick and at the place.
+Every such event is written to the log (`blocked`).
+
+Finding out what blocks it (one minute, with a ruler): at the inspection stop, before `ok`, measure the vertical gap g
+between the lowest point of the tips and the plate (the surface between the bricks). With the stop height T printed in
+`stop at z=...` (and `table_top_z` = the plate surface, -0.0168 with `baseplate_thickness: 0.0032`):
+
+    fingertip_below_tcp  L = (T - table_top_z) - g          e.g. T = 0.0352, g = 40 mm  ->  L = 12 mm
+    grasp_tcp_height     = L + 0.003                         the fingertips then stop 3 mm above the bottom of the brick
+
+    sed -i 's/^fingertip_below_tcp:.*/fingertip_below_tcp: 0.012/' src/fr3_pose_pick/config/pose_pick.yaml
+    sed -i 's/^grasp_tcp_height:.*/grasp_tcp_height: 0.015/' src/fr3_pose_pick/config/pose_pick.yaml
+
+If the tips are on top of the brick instead (look from the side), it is alignment, not height: use `pick_open_width`.
+
+`pick_open_width` (default off): open the hand wider for the pick descent only, e.g. `pick_open_width: 0.026`. The jaws then
+land on both sides of the brick with 5 mm to spare instead of 1 mm, and closing to `grasp_width` centres the brick across.
+Use it when nothing stands within ~1 cm of the brick's long sides. The hand still opens to `open_width` at the release.
+
 ## Correct the place by eye (x, y, z, yaw) before the brick is lowered
 
 Like the pick, the place has an inspection stop. After the brick is carried above the place spot it comes down to

@@ -26,7 +26,7 @@ min_tcp_above_table: 0.010
 # room to keep above the surface. The grasp is refused if grasp_tcp_height is lower than the sum (the tips
 # would go through the brick's bottom into the table / baseplate / brick below). Measure it for the printed tips.
 fingertip_below_tcp: 0.009      # stock tips: about 9 mm
-fingertip_table_margin: 0.001   # use 0.0025 on a Lego baseplate (its studs stand 1.7 mm above its surface)
+fingertip_table_margin: 0.0025  # the baseplate's studs stand 1.7 mm above its surface
 # Size of ONE finger tip, used to check that the tip fits between bricks on the pallet (null = not checked).
 finger_tip_thickness: null      # metres, in the direction the jaws close
 finger_tip_width: null          # metres, along the brick's long side
@@ -36,7 +36,8 @@ hand_zero_width: 0.0
 # A flat baseplate lying on the table raises the surface the bricks stand on by this much (metres; a standard
 # Lego baseplate is 0.0032). The bricks' bottoms then rest on the plate, and the table in the planning scene
 # is raised with it. 0 = bricks stand directly on the table.
-baseplate_thickness: 0.0
+baseplate_thickness: 0.0032     # SET 2026-10-26: two real runs read the brick top 3.0 mm above the model table once the plate was
+                                # under the bricks (camera bias already removed), as a standard 3.2 mm Lego baseplate gives
 clearance: 0.10                 # hover / lift height above the grasp
 place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
 place_inspect_height: 0.03      # the place inspection stop: the brick pauses this far above the release height (m)
@@ -48,6 +49,14 @@ grasp_width: 0.015              # close to this on the brick (the real hand chec
 open_width: 0.018               # open to this: 1 mm per side around a 16 mm brick, so the hand must be
                                 # lined up to about 1 mm sideways and in yaw, or a finger lands on the brick
 min_open_clearance: 0.001       # smallest open_width - brick short side the config check accepts (default 5 mm)
+# Optional: open the hand wider for the PICK descent only (null = open_width). The jaws then land on both sides of the
+# brick with room to spare, and closing to grasp_width centres the brick across; at the release it opens to open_width.
+# Use it if a finger keeps landing on the brick and nothing else stands within ~1 cm of the brick's long sides.
+pick_open_width: null
+# A downward move that ends this far SHORT of its target (m), or is pushed this far sideways, is blocked: the hand
+# is not closed / the brick not released; it lifts back and asks for a correction.
+blocked_height: 0.002
+blocked_sideways: 0.0035
 
 # ---- Grasp centring ---------------------------------------------------------------------------------
 # The real middle between the fingertips can sit a little off the point the arm is told to go to. That

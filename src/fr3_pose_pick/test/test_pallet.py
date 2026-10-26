@@ -24,6 +24,7 @@ def load(name):
 pl = load('pallet')
 pp = load('pose_pick')
 CONFIG = yaml.safe_load(open(ROOT / 'config' / 'pose_pick.yaml', encoding='utf-8'))
+STOCK = dict(CONFIG, baseplate_thickness=0.0, fingertip_table_margin=0.001)     # no baseplate, stock margin
 GOOD = {'origin': [0.36, -0.10], 'step_along': [0.04, 0.0], 'step_row': [0.0, -0.04], 'per_row': 5, 'rows': 3}
 
 
@@ -198,20 +199,20 @@ def test_the_command_line_tool(tmp_path):
 
 # ----------------------------------------------------- the tips and the baseplate (pose_pick.py)
 def test_a_baseplate_raises_the_surface_and_the_table_once():
-    c = dict(CONFIG, baseplate_thickness=0.0032, table_center=list(CONFIG['table_center']))
+    c = dict(STOCK, baseplate_thickness=0.0032, table_center=list(STOCK['table_center']))
     pp.apply_baseplate(c)
     pp.apply_baseplate(c)                                                # twice: still only once
-    assert c['table_top_z'] == pytest.approx(CONFIG['table_top_z'] + 0.0032)
-    assert c['table_center'][2] == pytest.approx(CONFIG['table_center'][2] + 0.0032)
+    assert c['table_top_z'] == pytest.approx(STOCK['table_top_z'] + 0.0032)
+    assert c['table_center'][2] == pytest.approx(STOCK['table_center'][2] + 0.0032)
     top = c['table_center'][2] + c['table_size'][2] / 2
     assert top == pytest.approx(c['table_top_z'])                        # the scene's table top is the plate top
     flat = pp.plan_pick(c, 0.40, 0.0)
-    assert flat['centre'][2] == pytest.approx(CONFIG['table_top_z'] + 0.0032 + c['block_size'][2] / 2)
+    assert flat['centre'][2] == pytest.approx(STOCK['table_top_z'] + 0.0032 + c['block_size'][2] / 2)
     for bad in (0.05, -0.001, 'a', True):
         with pytest.raises(ValueError, match='baseplate_thickness'):
-            pp.apply_baseplate(dict(CONFIG, baseplate_thickness=bad, table_center=list(CONFIG['table_center'])))
-    untouched = dict(CONFIG, table_center=list(CONFIG['table_center']))
-    assert pp.apply_baseplate(untouched)['table_top_z'] == CONFIG['table_top_z']        # 0 = no baseplate
+            pp.apply_baseplate(dict(STOCK, baseplate_thickness=bad, table_center=list(STOCK['table_center'])))
+    untouched = dict(STOCK, table_center=list(STOCK['table_center']))
+    assert pp.apply_baseplate(untouched)['table_top_z'] == STOCK['table_top_z']        # 0 = no baseplate
 
 
 def test_the_shipped_tool_geometry_is_valid():
@@ -220,22 +221,22 @@ def test_the_shipped_tool_geometry_is_valid():
 
 
 def test_longer_tips_are_refused_before_they_can_hit_the_table():
-    pp.check_tool_geometry(dict(CONFIG, fingertip_below_tcp=0.011))                     # 11 mm + 1 mm margin = 12: just fits (no float trap)
+    pp.check_tool_geometry(dict(STOCK, fingertip_below_tcp=0.011))                     # 11 mm + 1 mm margin = 12: just fits (no float trap)
     with pytest.raises(ValueError, match='too low'):
-        pp.check_tool_geometry(dict(CONFIG, fingertip_below_tcp=0.014))                 # 3 mm below the brick's bottom
+        pp.check_tool_geometry(dict(STOCK, fingertip_below_tcp=0.014))                 # 3 mm below the brick's bottom
     for bad in (-0.001, 0.08, 'x'):
         with pytest.raises(ValueError, match='fingertip_below_tcp'):
-            pp.check_tool_geometry(dict(CONFIG, fingertip_below_tcp=bad))
-    pp.check_tool_geometry({k: v for k, v in CONFIG.items() if k != 'fingertip_below_tcp'})   # old configs still load
+            pp.check_tool_geometry(dict(STOCK, fingertip_below_tcp=bad))
+    pp.check_tool_geometry({k: v for k, v in STOCK.items() if k != 'fingertip_below_tcp'})   # old configs still load
 
 
 def test_the_fingertip_floor_follows_the_tip_length():
-    long_tips = dict(CONFIG, fingertip_below_tcp=0.011, grasp_tcp_height=0.0125)
-    assert pp.plan_pick(long_tips, 0.40, 0.0)['grip'][2] == pytest.approx(CONFIG['table_top_z'] + 0.0125)
+    long_tips = dict(STOCK, fingertip_below_tcp=0.011, grasp_tcp_height=0.0125)
+    assert pp.plan_pick(long_tips, 0.40, 0.0)['grip'][2] == pytest.approx(STOCK['table_top_z'] + 0.0125)
     with pytest.raises(ValueError, match='fingertips'):
         pp.plan_pick(dict(long_tips, fingertip_table_margin=0.003), 0.40, 0.0)          # needs 14 mm, has 12.5
-    studs = dict(CONFIG, fingertip_table_margin=0.0025)                                 # on a baseplate: studs 1.7 mm
-    assert pp.plan_pick(studs, 0.40, 0.0)['grip'][2] == pytest.approx(CONFIG['table_top_z'] + 0.012)
+    studs = dict(STOCK, fingertip_table_margin=0.0025)                                 # on a baseplate: studs 1.7 mm
+    assert pp.plan_pick(studs, 0.40, 0.0)['grip'][2] == pytest.approx(STOCK['table_top_z'] + 0.012)
 
 
 def test_printed_tips_that_do_not_close_fully_change_the_widths():
@@ -266,7 +267,7 @@ def test_the_pallet_slot_is_recorded_before_the_back_off():
     mission.place_plan = lambda: where
     mission.show_target = lambda: None
     mission.say = lambda text: order.append(('say', text))
-    mission.go = lambda label, xyz, yaw=None: order.append(('go', label))
+    mission.go = lambda label, xyz, yaw=None, watch_blocked=False: order.append(('go', label))
     mission.mover = types.SimpleNamespace(hand=lambda close=False: order.append(('hand', 'close' if close else 'open')),
                                           detach_block=lambda: order.append(('detach',)))
     mission.on_placed = lambda: order.append(('recorded',))
