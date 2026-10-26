@@ -94,6 +94,48 @@ Important options:
 | `--max-distance` | 35 | maximum weighted prototype distance for high confidence |
 | `--min-margin` | 4 | required separation from the second-best class |
 
+## Learned colour model
+
+[`colour_model.py`](colour_model.py) trains a replacement for the fixed
+prototypes from the labelled single-brick dataset in
+`data/brick_dataset_extracted` (224 bricks, five colours). The trained model is
+[`colour_model.json`](colour_model.json); running it needs only NumPy.
+
+- Each brick is measured exactly as above (white balance, eroded box, robust
+  median Lab), then described by three features that transfer from isolated
+  bricks to stacks: Lab hue angle, lightness / table lightness, and chroma /
+  table lightness.
+- Linear discriminant analysis with equal class priors gives a probability per
+  colour. Below `threshold` (default 0.7) the brick is low confidence.
+- In frames with at least 10 boxes, a bounded per-frame hue shift and
+  lightness/chroma scale is fitted so the bricks best match the colour
+  clusters. This absorbs auto-exposure drift between captures and is saved as
+  `scene_feature_transform`. Smaller frames are not corrected.
+
+Train (prints accuracy with a random split, which is optimistic, and with each
+lighting condition held out, which is pessimistic, plus confusion matrices):
+
+```bash
+conda run -n sam3 python classifier/colour_model.py \
+  --dataset data/brick_dataset_extracted --out classifier/colour_model.json
+```
+
+Classify with it:
+
+```bash
+conda run -n sam3 python classifier/classify_top_brick_quality.py \
+  <segmentation results> --out <out> --colour-model classifier/colour_model.json
+```
+
+Without `--colour-model` the fixed prototypes below are used, unchanged.
+`run_pipeline_classifier.sh` uses the model by default (see
+[`pipeline_classifier/README.md`](../pipeline_classifier/README.md)).
+
+Known weaknesses: strong glare washes light bricks (especially medium nougat)
+out to grey-white and they can be misclassified; the dataset has no nougat
+samples under strong glare. Diffuse lighting or a lower fixed exposure helps
+most.
+
 ## Output
 
 The complete 69-recording result set is stored in
@@ -123,8 +165,8 @@ Single remaining top brick from `data3`:
 
 ## Limitations
 
-The method is a deterministic reference-colour classifier because no manually
-labelled training set is available. Confidence values indicate ambiguity but
+The prototype method is a deterministic reference-colour classifier; the
+learned colour model above is trained on the labelled single-brick dataset. Confidence values indicate ambiguity but
 are not measured probabilities. Fixed exposure and white balance are still
 recommended. If the camera, illumination, or physical brick batch changes
 substantially, recalibrate the five Lab prototypes before relying on the

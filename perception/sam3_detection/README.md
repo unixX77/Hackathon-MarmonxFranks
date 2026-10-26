@@ -276,11 +276,15 @@ To fix the colours, recalibrate `PALETTE` on this camera. Take the reference col
 1. Segment the RGB frame with SAM 3 and the "lego brick" prompt, and give each brick a colour class, as described above.
 2. Back-project the depth (aligned to colour) to 3D and fit the table plane with RANSAC to the depth around the bricks.
 3. Measure each brick's height above the table (80th percentile of its eroded mask) and keep the bricks within half a brick height of the highest one. This step is in [`top_layer_depth.py`](top_layer_depth.py), which can also be run on its own.
+   - The top layer must be supported by `--top-min-support` masks (default 2), so a single noisy high mask cannot hide the real top layer.
+   - Exception: the last brick of a layer is alone. A single mask one brick height above the supported layer is still accepted when its depth shows one clean brick: at least 80% valid depth, at least 80% flat surface with at most 3 mm spread, and a 30 x 15 mm footprint measured from its top-surface depth points (not the mask, so visible side walls do not count). `--no-lone-top-brick` disables this.
 4. Project each kept mask onto the table plane at its height and measure it in millimetres:
    - about 30 x 15 mm: one brick;
    - about 15 mm wide and n x 30 mm long: n touching bricks merged into one mask, split into n bricks;
    - about 15 mm wide but clearly shorter than 30 mm, or much narrower than 15 mm: a partly hidden brick or a sliver, rejected;
    - anything else: kept and flagged `irregular`.
+
+   Width may reach `--max-width-factor` x 15 mm (default 1.5, i.e. 22.5 mm, halfway to two bricks wide). Masks wider than that are rejected before the depth step as multi-row assemblies. The margin is needed because a raised brick, or a brick on the edge of the stack, is seen with its side walls and measures about 20 mm wide.
 5. Fit a 30 x 15 mm footprint to each brick and report its centre in the camera frame, its yaw on the table and its layer.
 
 ### Run
@@ -291,7 +295,7 @@ The input is one extracted recording folder with `rgb/`, `depth/` (aligned to co
 python top_layer_bricks.py path/to/recording --frame 000020
 ```
 
-A window shows the preview; add `--no-show` to skip it. Without a display the preview is only saved. `--brick-size-mm L W H` and `--size-tol` (default 0.3, i.e. ±30%) set the prior.
+A window shows the preview; add `--no-show` to skip it. Without a display the preview is only saved. `--brick-size-mm L W H`, `--size-tol` (default 0.3, i.e. ±30%) and `--max-width-factor` (default 1.5) set the prior; `--top-min-support` and `--no-lone-top-brick` control the top-layer choice. `bricks.json` records `lone_top_brick_accepted` and, per depth instance, `top_footprint_mm`.
 
 Output in `data/top_layer_bricks/<recording>/<frame>/`:
 

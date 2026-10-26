@@ -7,6 +7,11 @@ from pathlib import Path
 import cv2
 import numpy as np
 
+# A lone top-layer instance must look like one clean brick (see lone_brick).
+LONE_MIN_VALID_FRACTION = 0.8
+LONE_MIN_SURFACE_FRACTION = 0.8
+LONE_MAX_SURFACE_SPREAD_M = 0.003
+
 
 def point_cloud(depth, intrinsics, scale):
     if any(abs(x) > 1e-8 for x in intrinsics.get('distortion_coeffs', [])):
@@ -70,6 +75,20 @@ def upper_surface(values, block_height, min_pixels):
     return max(supported, key=lambda group: np.median(group))
 
 
+def lone_brick(record, supported_height, tolerance, args):
+    """Whether an unsupported high instance is convincingly one brick lying on the supported layer."""
+    if 'top_footprint_mm' not in record or not hasattr(args, 'brick_size_mm'):
+        return False
+    L, W, H = args.brick_size_mm
+    length, width = record['top_footprint_mm']
+    return (abs(record['height_m'] - supported_height - H / 1000) <= tolerance
+            and record['valid_fraction'] >= LONE_MIN_VALID_FRACTION
+            and record['surface_fraction'] >= LONE_MIN_SURFACE_FRACTION
+            and record['surface_spread_m'] <= LONE_MAX_SURFACE_SPREAD_M
+            and abs(length - L) <= args.size_tol * L
+            and (1 - args.size_tol) * W <= width <= getattr(args, 'max_width_factor', 1 + args.size_tol) * W)
+
+
 def filter_top(instance, depth, calibration, args):
     intr = calibration['aligned_depth_intrinsics']
     if depth.shape != (intr['height'], intr['width']):
@@ -86,6 +105,11 @@ def filter_top(instance, depth, calibration, args):
         background &= roi
     normal, offset, residual, ratio = table_plane(points[background], args.plane_threshold_mm / 1000)
     heights = points @ normal + offset
+    e1 = np.cross(normal, [1.0, 0.0, 0.0])
+    if np.linalg.norm(e1) < 1e-6:
+        e1 = np.cross(normal, [0.0, 1.0, 0.0])
+    e1 /= np.linalg.norm(e1)
+    e2 = np.cross(normal, e1)
     records = []
     for ident in np.unique(instance[foreground]):
         mask = instance == ident
@@ -109,6 +133,13 @@ def filter_top(instance, depth, calibration, args):
                 record['surface_fraction'] = float(len(surface) / len(values))
                 record['surface_spread_m'] = float(np.percentile(surface, 90) - np.percentile(surface, 10))
                 record['approx_layer'] = int(np.rint(record['height_m'] / (args.block_height_mm / 1000)))
+                # Footprint from top-surface depth points only: unlike the RGB mask it
+                # excludes visible side walls, so it is a fair size test for a lone brick.
+                on_top = samples & (np.abs(heights - record['height_m']) <= args.block_height_mm / 4000)
+                if on_top.sum() >= 3:
+                    planar = points[on_top] @ np.stack([e1, e2], 1) * 1000
+                    _, size, _ = cv2.minAreaRect(planar.astype(np.float32))
+                    record['top_footprint_mm'] = [round(float(max(size)), 1), round(float(min(size)), 1)]
         records.append(record)
     tolerance = args.block_height_mm / 2000
     candidates = []
@@ -123,6 +154,15 @@ def filter_top(instance, depth, calibration, args):
     supported = [g for g in groups if len(g) >= minimum]
     group = max(supported, key=lambda g: np.median([r['height_m'] for r in g]), default=[])
     highest = float(np.median([r['height_m'] for r in group])) if group else None
+    # The last brick of a layer is alone. Accept a lone instance one layer above the
+    # supported top only when it is clearly a single flat brick, not a noisy maximum.
+    lone = []
+    if group and getattr(args, 'lone_top_brick', False):
+        lone = [r for r in candidates if r['height_m'] > highest + tolerance
+                and lone_brick(r, highest, tolerance, args)]
+    if lone:
+        group = lone
+        highest = float(np.median([r['height_m'] for r in group]))
     for r in records:
         r['kept'] = highest is not None and r in candidates and abs(highest - r['height_m']) <= tolerance
         if not r['kept'] and 'reason' not in r:
@@ -133,6 +173,7 @@ def filter_top(instance, depth, calibration, args):
               'table_median_residual_m': residual, 'table_inlier_fraction': ratio,
               'instances': records, 'top_cluster_support': len(group),
               'top_min_support': getattr(args, 'top_min_support', 2),
+              'lone_top_brick_accepted': bool(lone),
               'method': 'supported upper-surface mode per mask; highest supported instance cluster',
               'limitations': 'Experimental: assumes dominant background is table; studs/occlusions/noise can bias height.'}
     return kept, report

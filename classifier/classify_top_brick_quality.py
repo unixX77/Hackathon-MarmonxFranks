@@ -180,11 +180,20 @@ def classify_result(top_boxes_path, output_root, args):
         measurements.append({'lab_q25': np.round(q25, 2).tolist(),
                              'lab_q75': np.round(q75, 2).tolist(),
                              'reliable_pixels': pixels})
-    if features:
+    model_path = getattr(args, 'colour_model', None)
+    if features and model_path:
+        # Learned model: table-relative features replace the per-frame Lab offset.
+        from colour_model import ColourModel, colour_features, table_lightness
+        table_l = table_lightness(lab, boxes)
+        predictions, scene_transform = ColourModel.load(model_path).classify(
+            [colour_features(median, table_l) for median in features], features)
+        offset = [0.0, 0.0, 0.0]
+    elif features:
         predictions, offset = classify_features(
             np.asarray(features), args.max_distance, args.min_margin)
+        scene_transform = None
     else:
-        predictions, offset = [], [0.0, 0.0, 0.0]
+        predictions, offset, scene_transform = [], [0.0, 0.0, 0.0], None
     quality_boxes = []
     for box, measurement, prediction in zip(boxes, measurements, predictions):
         quality_boxes.append({**box, **prediction, **measurement})
@@ -198,7 +207,8 @@ def classify_result(top_boxes_path, output_root, args):
     Image.fromarray(result).save(destination / 'quality_result.png')
     Image.fromarray(comparison).save(destination / 'quality_comparison.png')
     output_payload = {
-        'strategy': 'robust-lab-prototype-v1',
+        'strategy': 'learned-colour-model-v1' if model_path else 'robust-lab-prototype-v1',
+        'colour_model': str(model_path) if model_path else None,
         'segmentation_source': str(top_boxes_path),
         'rgb': str(rgb_path),
         'dataset': dataset,
@@ -207,6 +217,7 @@ def classify_result(top_boxes_path, output_root, args):
         'white_balance': {'table_rgb': table_rgb,
                           'rgb_gains': np.round(gains, 5).tolist()},
         'scene_lab_offset': offset,
+        'scene_feature_transform': scene_transform,
         'good': sum(box['quality'] == 'good' for box in quality_boxes),
         'bad': sum(box['quality'] == 'bad' for box in quality_boxes),
         'low_confidence': sum(box['confidence'] == 'low' for box in quality_boxes),
@@ -226,6 +237,8 @@ def main():
     parser.add_argument('--min-pixels', type=int, default=80)
     parser.add_argument('--max-distance', type=float, default=35.0)
     parser.add_argument('--min-margin', type=float, default=4.0)
+    parser.add_argument('--colour-model', type=Path,
+                        help='JSON from colour_model.py; omit to use the fixed Lab prototypes')
     args = parser.parse_args()
 
     inputs = sorted(args.segmentation_results.rglob('top_boxes.json'))

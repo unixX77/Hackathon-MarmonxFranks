@@ -11,6 +11,10 @@ table plane and then
     (a brick mostly hidden by the layer above), or clearly narrower than W
     (a sliver, e.g. the side face of an edge brick),
   - rejected as irregular when it fits none of these.
+Width may reach --max-width-factor x W (default 1.5): an isolated raised brick's
+mask includes its side walls. The top layer is the highest height supported by
+--top-min-support masks; a lone mask one layer higher is still accepted when its
+depth shows one clean, flat L x W brick (--no-lone-top-brick disables this).
 Every brick gets a fitted L x W footprint: centre in the camera frame, yaw on the
 table and layer index, which is what a grasp planner needs.
 
@@ -106,8 +110,9 @@ def geometry_mask_filter(depth, calibration, args):
                 height = float(np.median(heights[valid]))
                 _, _, q = mask_on_plane(mask, K_inv, normal, offset, height, e1, e2)
                 _, (w, h), _ = cv2.minAreaRect(q.astype(np.float32))
-                # Long, one-brick-wide runs can still be split by the size prior.
-                if min(w, h) > args.brick_size_mm[1] * (1 + args.size_tol):
+                # Long, one-brick-wide runs can still be split by the size prior. The limit is
+                # halfway to two bricks wide: a raised brick's mask includes its side walls.
+                if min(w, h) > args.brick_size_mm[1] * args.max_width_factor:
                     reason = 'too wide: assembly or multi-row mask'
             if reason:
                 rejected.append({'score': float(scores[i]), 'reason': reason,
@@ -139,7 +144,7 @@ def apply_size_prior(instance, kept_records, sam_records, calibration, report, a
         axis = np.array([np.cos(np.radians(long_deg)), np.sin(np.radians(long_deg))])
         n = int(np.rint(length / L))
 
-        width_ok = abs(width - W) <= tol * W
+        width_ok = (1 - tol) * W <= width <= args.max_width_factor * W
         if width_ok and n >= 1 and abs(length - n * L) <= tol * L:
             status = 'brick' if n == 1 else 'split'
         elif (width_ok and length < (1 - tol) * L) or width < (1 - tol) * W:
@@ -387,7 +392,11 @@ def build_parser():
                    help='brick length, width, height (H is also the layer height)')
     p.add_argument('--top-min-support', type=int, default=2, choices=range(1, 100),
                    help='minimum masks supporting the top layer; use 1 for a single top brick')
+    p.add_argument('--lone-top-brick', action=argparse.BooleanOptionalAction, default=True,
+                   help='accept a single clean brick one layer above the supported top (last brick of a layer)')
     p.add_argument('--size-tol', type=float, default=0.3, help='relative tolerance on length and width')
+    p.add_argument('--max-width-factor', type=float, default=1.5,
+                   help='masks wider than this x brick width are multi-row assemblies')
     p.add_argument('--table-roi', nargs=4, type=int, metavar=('X', 'Y', 'W', 'H'))
     p.add_argument('--plane-threshold-mm', type=float, default=3)
     p.add_argument('--erode', type=int, default=2, help='3x3 erosion iterations')

@@ -1,0 +1,96 @@
+{
+  "features": [
+    "hue",
+    "L_rel",
+    "chroma_rel"
+  ],
+  "classes": [
+    "red",
+    "dark_red",
+    "dark_orange",
+    "medium_nougat",
+    "reddish_brown"
+  ],
+  "feature_mean": [
+    40.60672819773266,
+    0.4287516103341532,
+    0.17269438286349745
+  ],
+  "feature_scale": [
+    11.413047243299241,
+    0.18875238796201335,
+    0.09810129611156479
+  ],
+  "class_means": [
+    [
+      -0.7696579762678244,
+      0.8463634232737746,
+      1.4823010660416842
+    ],
+    [
+      -1.0239828061465641,
+      -0.2884023619151188,
+      -0.8322045592398335
+    ],
+    [
+      0.7582848961768215,
+      0.32497005962344166,
+      0.5586933897877687
+    ],
+    [
+      1.1459837405670927,
+      0.14875401064997482,
+      -0.11105666858441303
+    ],
+    [
+      0.09392803488017763,
+      -1.0751266696170614,
+      -1.1013129353911926
+    ]
+  ],
+  "covariance": [
+    [
+      0.28937180875766183,
+      -0.01799267211741397,
+      0.04406692325736836
+    ],
+    [
+      -0.01799267211741397,
+      0.5915236958211342,
+      -0.1076186440843103
+    ],
+    [
+      0.04406692325736836,
+      -0.1076186440843103,
+      0.1310238247184672
+    ]
+  ],
+  "threshold": 0.7,
+  "trained_on": "/home/slolla/Documents/marmon/data/brick_dataset_extracted",
+  "samples": 224,
+  "class_counts": {
+    "medium_nougat": 40,
+    "reddish_brown": 41,
+    "dark_orange": 48,
+    "dark_red": 51,
+    "red": 44
+  },
+  "measurement": {
+    "erosion_fraction": 0.12,
+    "min_pixels": 80
+  },
+  "evaluation": {
+    "random 5-fold (optimistic: near-duplicate frames on both sides)": {
+      "colour_accuracy": 0.8973214285714286,
+      "quality_accuracy": 0.90625,
+      "confident_fraction": 0.8883928571428571,
+      "confident_colour_accuracy": 0.9396984924623115
+    },
+    "one lighting condition held out (pessimistic: lighting tied to colour)": {
+      "colour_accuracy": 0.5223214285714286,
+      "quality_accuracy": 0.5357142857142857,
+      "confident_fraction": 0.8348214285714286,
+      "confident_colour_accuracy": 0.5668449197860963
+    }
+  }
+}
