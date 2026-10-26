@@ -39,9 +39,9 @@ hand_zero_width: 0.0
 baseplate_thickness: 0.0032     # SET 2026-10-26: two real runs read the brick top 3.0 mm above the model table once the plate was
                                 # under the bricks (camera bias already removed), as a standard 3.2 mm Lego baseplate gives
 clearance: 0.10                 # hover / lift height above the grasp
-place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
+place_margin: -0.001            # LOCKED 2026-10-26: release height above the seat; negative = pressed 1 mm onto the studs (-2 mm typed at the place, then 1 mm more)
 place_inspect_height: 0.03      # the place inspection stop: the brick pauses this far above the release height (m)
-place_max_press: 0.003          # a correction at the place may lower the brick this far below its planned seat, on top of place_margin (m)
+place_max_press: 0.003          # the brick may be pressed this far below its planned seat in total (place_margin and a correction at the place together) (m)
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
 # (short side 16 mm): open 18 mm, close 15 mm. Change them here, not on the command line.
@@ -71,7 +71,7 @@ blocked_sideways: 0.0035
 # all across, so the across value is the rough one. Keep using the inspection stop, then refine with
 #   measure_grasp_offset.py --last 5 --apply <this file>
 # (the corrections you still type are added to this value). The earlier values are in git history.
-tcp_correction_hand: [-0.0100, 0.0040]   # LOCKED 2026-10-26 (new thin tips, real pick: y -1 mm at the stop)
+tcp_correction_hand: [-0.0130, 0.0045]   # LOCKED 2026-10-26 from the good pick (x -3.0 mm, y -0.5 mm at the stop)
 grasp_force: 10.0
 gripper_speed: 0.02
 # Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the

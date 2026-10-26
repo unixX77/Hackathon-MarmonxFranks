@@ -109,13 +109,13 @@ def test_the_command_line_end_to_end(tmp_path):
 
 
 def test_the_stored_correction_is_valid_and_small():
-    """The value in the shipped config must pass the same check the script runs at start (two numbers, under 10 mm)."""
+    """The value in the shipped config must pass the same check the script runs at start (two numbers, under 20 mm)."""
     config = yaml.safe_load(open(CONFIG_PATH, encoding='utf-8'))
     value = config['tcp_correction_hand']
-    assert len(value) == 2 and max(abs(value[0]), abs(value[1])) <= 0.010
+    assert len(value) == 2 and max(abs(value[0]), abs(value[1])) <= 0.020
     pose_pick = load('pose_pick')
     pose_pick.check_tcp_correction(config)
-    assert value == pytest.approx([-0.0100, 0.0040], abs=1e-9)    # the stored real measurement
+    assert value == pytest.approx([-0.0130, 0.0045], abs=1e-9)    # the stored real measurement
 
 
 def test_move_commands_the_corrected_point_and_returns_it():

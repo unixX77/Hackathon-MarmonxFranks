@@ -103,8 +103,8 @@ def main():
               'corrections were not consistent. Check before storing it.')
     print('\nPut this in src/fr3_pose_pick/config/pose_pick.yaml:\n  ' + config_line(result['mean']))
     if args.apply:
-        if abs(along) > 0.010 or abs(across) > 0.010:
-            sys.exit('Refusing to write a correction over 10 mm: that is not a small centring offset.')
+        if abs(along) > 0.020 or abs(across) > 0.020:
+            sys.exit('Refusing to write a correction over 20 mm: that is not a small centring offset.')
         print('written to ' + args.apply + ' (old file kept as .bak)' if apply_to_config(args.apply, result['mean'])
               else 'Could not find a single tcp_correction_hand line in ' + args.apply)
 

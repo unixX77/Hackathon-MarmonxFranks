@@ -200,8 +200,8 @@ After a change of tips:
 A flat baseplate raises the surface the bricks stand on. Set `baseplate_thickness` (a standard Lego baseplate is
 0.0032 m): the brick heights, the layers and the table in the planning scene all move up by it. Also set
 `fingertip_table_margin: 0.0025` (the plate's studs stand 1.7 mm above its surface). Bricks seat on the studs, so
-a brick placed 2 mm (`place_margin`) above its seated height drops onto them: set `place_margin: 0.0` to just
-touch them, and expect a seated brick to need a firm pull to lift off again.
+a brick released at its seated height (`place_margin: 0.0`) just touches them; a negative `place_margin` presses it
+onto them (down to `-place_max_press`, 3 mm). Expect a seated brick to need a firm pull to lift off again.
 
 ## Pallet: bricks placed one after the other in a grid, each with a gap
 
@@ -237,11 +237,14 @@ These came from a real, successful pick and place and are stored in `config/pose
 
     baseplate_thickness: 0.0032      the plates under the bricks
     grasp_tcp_height:    0.017       tips touch at hand z = -0.0005, the grasp stops at +0.0002 (was 0.012: +5 mm)
-    tcp_correction_hand: [-0.0100, 0.0040]   centring along / across the long side (y -1 mm more than before)
-    place_margin:        0.002       unchanged; the release height follows grasp_tcp_height, so the place is +5 mm too
+    tcp_correction_hand: [-0.0130, 0.0045]   centring along / across the long side (second run: x -3.0 mm, y -0.5 mm more)
+    place_margin:        -0.001      release 1 mm BELOW the seat (pressed onto the studs): -2 mm typed at the stop, then 1 mm more
 
-The pick was accepted as is. The place (release z = +0.0022 after the +5 mm) still needs a small adjustment: correct it at
-the `place correction>` stop, then change `place_margin` (a permanent z change at the place only).
+The release height follows `grasp_tcp_height` (+5 mm with the pick), so the place is: grasp z +0.0002, release z -0.0008.
+The pick of the second run (photo taken with the hand at z=0.226) needed 3 mm more along x than the first (hand at z=0.187):
+if a later pick is off by a steady amount, take the photo with the hand at the same height as these two (about 0.19 to 0.23)
+before changing the centring again. The place may still be pressed 2 mm lower at the stop (total press limit 3 mm).
+`measure_grasp_offset.py` and the config check now accept a centring up to 20 mm (it was 10 mm).
 
 ## The hand stops on the way down: it is never closed on, and the brick is never released in the air
 
@@ -282,11 +285,12 @@ ok                lower it, let go and back off      q   stop here: the brick st
 - On a real robot it is on by default (as the pick inspection); `--no-place-inspect` turns it off, `--place-inspect` forces it
   on (also in simulation). It works with `--place`, `--place-offset`, `--place-camera-xyz` and `--pallet`.
 - Limits, as at the pick: 10 mm in x and y, 5 mm in z and 15 degrees per command; 30 mm, 15 mm and 45 degrees in total.
-- **It will not press the brick into the surface:** the brick is released `place_margin` (2 mm) above its seat and may go
-  `place_max_press` (3 mm) lower than that, so `z` down to -5 mm in total. If the surface really is lower than planned, fix
+- **It will not press the brick into the surface:** the brick may be pressed at most `place_max_press` (3 mm) below its seat
+  in total, `place_margin` (shipped: -1 mm, already pressed 1 mm) and the correction together: with the shipped values `z` down
+  to -2 mm. If the surface really is lower than planned, fix
   `table_top_z` / `baseplate_thickness` instead. It also refuses a correction that would leave the allowed window.
 - The correction applies to this brick only; it is written to `pose_pick_offsets.json` (`place_correction`: dx, dy, dz, yaw).
-  If every place needs the same z, tell me and the value can be stored in `place_margin`.
+  A z that every place needs belongs in `place_margin` (signed: positive above the seat, negative pressed onto it).
 - The back-off after the release starts from the corrected position.
 
 ## Smooth, straight-line motion (no jerks)

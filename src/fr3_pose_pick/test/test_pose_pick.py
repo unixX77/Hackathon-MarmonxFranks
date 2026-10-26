@@ -132,8 +132,11 @@ def test_place_plan_stops_above_the_table_by_the_margin():
 def test_place_pose_gets_the_same_checks_as_a_pick():
     with pytest.raises(ValueError, match='outside the allowed window'):
         pp.plan_place(CONFIG, 0.40, 0.45, 0.0)
+    pp.plan_place(dict(CONFIG, place_margin=-0.003), 0.40, 0.0, 0.0)       # pressed onto the studs, up to place_max_press: fine
     with pytest.raises(ValueError, match='place_margin'):
-        pp.plan_place(dict(CONFIG, place_margin=-0.001), 0.40, 0.0, 0.0)
+        pp.plan_place(dict(CONFIG, place_margin=-0.0031), 0.40, 0.0, 0.0)   # more than place_max_press (3 mm): refused
+    with pytest.raises(ValueError, match='place_margin'):
+        pp.plan_place(dict(CONFIG, place_margin=-0.002, place_max_press=0.001), 0.40, 0.0, 0.0)
 
 
 def test_place_at_a_given_height_for_stacking():
@@ -230,6 +233,6 @@ def test_config_check_accepts_the_fixed_widths_and_still_rejects_a_hand_that_is_
 def test_tcp_correction_must_be_two_small_numbers_in_metres():
     pp.check_tcp_correction({})                                          # absent: fine
     pp.check_tcp_correction({'tcp_correction_hand': [0.0025, -0.0012]})
-    for bad in ([0.0025], [0.0025, 0.0, 0.0], [2.5, 1.0], [0.02, 0.0], ['a', 0.0], [float('nan'), 0.0], 0.002):
+    for bad in ([0.0025], [0.0025, 0.0, 0.0], [2.5, 1.0], [0.03, 0.0], ['a', 0.0], [float('nan'), 0.0], 0.002):
         with pytest.raises(ValueError, match='tcp_correction_hand'):
             pp.check_tcp_correction({'tcp_correction_hand': bad})

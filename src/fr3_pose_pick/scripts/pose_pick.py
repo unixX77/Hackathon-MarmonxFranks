@@ -147,11 +147,14 @@ def plan_pick(c, x, y, z=None, yaw=0.0, pose_is_tcp=False):
 
 def plan_place(c, x, y, yaw, z=None, pose_is_tcp=False):
     """Where the carried brick is put down. Same rules as a pick pose (workspace window, table, fingertips);
-    the hand stops place_margin above the height at which the brick rests at the given pose."""
+    the hand stops place_margin above the height at which the brick rests at the given pose (negative: that far
+    below it, pressing the brick onto the studs; at most place_max_press)."""
     plan = plan_pick(c, x, y, z, yaw, pose_is_tcp)
     margin = float(c.get('place_margin', 0.0))
-    if margin < 0:
-        raise ValueError('place_margin must not be negative: it would push the brick into what it rests on')
+    if margin < -float(c.get('place_max_press', 0.003)):
+        raise ValueError(f'place_margin {margin * 1000:.1f} mm would push the brick more than place_max_press '
+                         f'({float(c.get("place_max_press", 0.003)) * 1000:.1f} mm) into what it rests on '
+                         '(negative = pressed onto the studs; it is in METRES)')
     plan['release'] = [plan['grip'][0], plan['grip'][1], plan['grip'][2] + margin]
     return plan
 
@@ -356,15 +359,15 @@ def check_pick_open_width(c):
 
 
 def check_tcp_correction(c):
-    """tcp_correction_hand must be two small numbers (metres). More than 1 cm is a typo or a unit mistake."""
+    """tcp_correction_hand must be two small numbers (metres). More than 2 cm is a typo or a unit mistake."""
     value = c.get('tcp_correction_hand')
     if value is None:
         return
     if not (isinstance(value, (list, tuple)) and len(value) == 2
             and all(isinstance(v, (int, float)) and not isinstance(v, bool) and math.isfinite(v) for v in value)):
         raise ValueError('tcp_correction_hand must be two numbers [along, across] in metres')
-    if max(abs(value[0]), abs(value[1])) > 0.010:
-        raise ValueError(f'tcp_correction_hand {list(value)} is more than 10 mm: it is in METRES (0.002 is 2 mm)')
+    if max(abs(value[0]), abs(value[1])) > 0.020:
+        raise ValueError(f'tcp_correction_hand {list(value)} is more than 20 mm: it is in METRES (0.002 is 2 mm)')
 
 
 def jaw_clearance_note(c):

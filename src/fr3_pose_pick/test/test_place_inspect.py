@@ -20,7 +20,7 @@ def mission(answers=(), inspect=True, place=None):
     """A Mission without ROS: records every move and hand action, answers the prompt from `answers`."""
     log = []
     m = pp.Mission.__new__(pp.Mission)
-    m.c = dict(CONFIG)
+    m.c = dict(CONFIG, place_margin=0.002)         # the tests below are written for a release 2 mm above the seat
     m.plan = pp.plan_pick(CONFIG, 0.40, 0.036)
     m.place = place or {'offset': (0.0, 0.07), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None}
     m.place_nudge = np.zeros(4)
@@ -67,8 +67,18 @@ def test_a_correction_moves_every_point_of_the_place_together():
 
 
 # ----------------------------------------------------------------------------- what is allowed
+def test_the_shipped_place_may_be_pressed_only_a_little_more():
+    """place_margin -1 mm (pressed onto the studs) + place_max_press 3 mm: 2 mm more is the limit, never beyond."""
+    assert CONFIG['place_margin'] + CONFIG['place_max_press'] > 0
+    pp.check_place_nudge(CONFIG, [0, 0, 0, -(CONFIG['place_margin'] + CONFIG['place_max_press'])], (0.40, 0.10))
+    with pytest.raises(ValueError, match='into the surface'):
+        pp.check_place_nudge(CONFIG, [0, 0, 0, -(CONFIG['place_margin'] + CONFIG['place_max_press']) - 0.0002], (0.40, 0.10))
+    assert pp.plan_place(CONFIG, 0.40, 0.10, 0.0)['release'][2] - pp.plan_place(CONFIG, 0.40, 0.10, 0.0)['grip'][2] \
+        == pytest.approx(-0.001)
+
+
 def test_what_corrections_at_the_place_are_allowed():
-    c = CONFIG
+    c = dict(CONFIG, place_margin=0.002)
     pp.check_place_nudge(c, [0.002, -0.001, 3.0, -0.002], (0.40, 0.10))                  # small: fine
     pp.check_place_nudge(c, [0.0, 0.0, 0.0, -0.005], (0.40, 0.10))                       # margin 2 mm + 3 mm of press: the limit
     with pytest.raises(ValueError, match='into the surface'):
