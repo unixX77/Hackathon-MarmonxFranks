@@ -144,3 +144,9 @@ place_align_tries: 3            # at most this many alignment corrections before
 place_align_max: 0.008          # m: a bigger gap than this at the alignment stop means the pose or the arm is wrong: stop
 place_search_step: 0.0007       # m: a brick sitting on top of the studs is tried again shifted by this much, in a small spiral
 place_search_tries: 6           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand
+
+# Palletizing (pose_pick_palletize.py): where the FIRST brick of a new row goes, from where it was picked (m; x, y in the base
+# frame, +y = to the robot's left). 0.08 is exactly 10 studs, so the first slot is on the stud grid when the stack and the row are
+# on aligned baseplates; 0.078 (set 2026-10-26 on request, y -2 mm) is for a row plate that sits 2 mm off the stack's grid.
+# Only a NEW row reads this: a started row keeps its own (--reset starts again). --start-offset DX DY overrides it for one row.
+palletize_start_offset: [0.0, 0.078]

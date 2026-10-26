@@ -277,8 +277,9 @@ the bricks go into a ROW instead of back where they were picked:
     ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml \
         --ee-pose X Y Z QX QY QZ QW --brick X1 Y1 Z1 A1 --brick X2 Y2 Z2 A2 --brick X3 Y3 Z3 A3
 
-- The first brick is set down `--start-offset` from where it was picked (default `0 0.08`: 8 cm to the robot's left, along +y, clear of
-  the stack), on the table / baseplate. Every next brick goes NEXT to the one before, along +y, `--gap` apart (default 16 mm, so the
+- The first brick is set down `--start-offset` from where it was picked (default: `palletize_start_offset` in the config, now `0 0.078`:
+  about 8 cm to the robot's left, along +y, clear of the stack), on the table / baseplate. 0.08 is exactly 10 studs, so it is on the
+  stud grid when the stack and the row are on aligned plates; 0.078 is for a row plate that sits 2 mm off. Only a new row reads it. Every next brick goes NEXT to the one before, along +y, `--gap` apart (default 16 mm, so the
   centres are 32 mm apart), long side along x (`--row-yaw 0`).
 - The row is remembered in `pose_pick_palletize.json` (gitignored): each command, or each `--brick`, takes the next slot. Slot 1 is
   wherever the first brick really ended up (the measured hand position at the release); the others are exact multiples of the pitch from

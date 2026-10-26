@@ -5,8 +5,8 @@ Same machinery as pose_pick_auto.py (no questions, no corrections, the countdown
 and explain on any failure, the gripper's finger width confirms every grasp, the brick is set down where the hand
 MEASURABLY must be and retried 0.7 mm to the side if it sits on top of the studs). What is different is WHERE the brick goes:
 
-  * the first brick is set down --start-offset away from where it was picked (default 0 +0.08: 8 cm to the robot's left,
-    along +y, clear of the stack it came from), on the table / baseplate;
+  * the first brick is set down --start-offset away from where it was picked (default: palletize_start_offset in the config,
+    0 +0.078: about 8 cm to the robot's left, along +y, clear of the stack it came from), on the table / baseplate;
   * every next brick goes NEXT TO the one before, along +y, with --gap between them (default 16 mm, so the centres are one
     brick width plus the gap = 32 mm apart), with the long side along x (--row-yaw 0);
   * the row is remembered in a state file (pose_pick_palletize.json), so each run, or each --brick, takes the next slot.
@@ -25,7 +25,8 @@ or several bricks in one go (the arm moves in between, so give the pose the pict
 
 The other options are those of pose_pick.py, except the place ones (this script decides where each brick goes) and the
 questions. Own options:
-  --start-offset DX DY   where the FIRST brick goes, from where it was picked (default 0 0.08); fixed by the first brick
+  --start-offset DX DY   where the FIRST brick goes, from where it was picked (default: palletize_start_offset in the config,
+                         0 0.078); fixed by the first brick
   --gap METRES           space between neighbouring bricks (default 0.016); fixed by the first brick
   --row-yaw DEG          angle of the long side of the placed bricks from base x (default 0)
   --brick X Y Z A        a brick to pick: camera point and angle (repeat it; needs --ee-pose when there are several)
@@ -48,7 +49,7 @@ import pose_pick as pp
 import pose_pick_auto as auto
 
 STATE_FILE = 'pose_pick_palletize.json'
-DEFAULT_START_OFFSET = (0.0, 0.08)
+DEFAULT_START_OFFSET = (0.0, 0.08)      # used only when the config has no palletize_start_offset
 DEFAULT_GAP = 0.016
 PLACE_RELATED = auto.PLACE_OPTIONS + ('--place-layers', '--place-yaw', '--place-camera-angle', '--place-camera-quat',
                                       '--place-is-tcp', '--pallet-file', '--pallet-slot')
@@ -234,7 +235,8 @@ def main(argv=None):
                 if given is not None and list(_flat(given)) != list(_flat(kept)):
                     raise ValueError(f'The row was started with {name} {kept}: it cannot change in the middle. Use --reset for a new row.')
         else:
-            state = new_state(args.start_offset or DEFAULT_START_OFFSET, args.gap if args.gap is not None else DEFAULT_GAP,
+            state = new_state(args.start_offset or c.get('palletize_start_offset') or DEFAULT_START_OFFSET,
+                              args.gap if args.gap is not None else DEFAULT_GAP,
                               args.row_yaw if args.row_yaw is not None else 0.0, c['block_size'][1])
         notes = check_row(c, state)
     except (ValueError, OSError) as problem:

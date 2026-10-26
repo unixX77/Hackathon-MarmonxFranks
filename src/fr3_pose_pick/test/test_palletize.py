@@ -118,7 +118,9 @@ def test_the_first_brick_is_set_down_relative_to_its_own_pick(run, tmp_path):
     assert code == 0
     argv = capture.calls[0]
     assert argv[:3] == ['--config', str(CONFIG_PATH), '--camera-xyz'] and '--no-inspect' in argv and '--no-step' in argv
-    assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == ['--place-offset', '0.000000', '0.080000']
+    assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == [
+        '--place-offset', f'{CONFIG["palletize_start_offset"][0]:.6f}', f'{CONFIG["palletize_start_offset"][1]:.6f}']
+    assert CONFIG['palletize_start_offset'] == [0.0, 0.078]
     assert '--place' not in argv and argv[argv.index('--place-yaw') + 1] == '0.000000'
     state = pal.load_state(tmp_path / 'row.json')
     assert state['origin'] == [0.4395, -0.0192] and len(state['placed']) == 1                # measured at the release
@@ -241,3 +243,9 @@ def test_a_later_brick_lands_on_the_measured_slot_whatever_its_own_pick_error_wa
     m.place_brick()
     assert m.release_hand[:2] == pytest.approx(slot, abs=0.0005)             # slot 3 = 2 pitches from slot 1, to 0.5 mm
     assert len(state['placed']) == 3 and m.mover.opened == 1 and not m.blocked
+
+
+def test_the_start_offset_comes_from_the_config_and_an_option_overrides_it(run, tmp_path):
+    code, capture = run(['--camera-xyz', '0.0877', '-0.0416', '0.2610', '--camera-angle', '-86.4', '--start-offset', '0.0', '0.1'])
+    assert code == 0 and capture.calls[0][capture.calls[0].index('--place-offset') + 2] == '0.100000'
+    assert pal.load_state(tmp_path / 'row.json')['start_offset'] == [0.0, 0.1]
