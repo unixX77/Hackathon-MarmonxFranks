@@ -245,6 +245,27 @@ def test_the_grasp_force_is_strong_enough_for_the_studs_and_capped_below_the_han
             module.validate(dict(cfg, grasp_force=bad))
 
 
+def test_a_camera_point_with_a_missing_decimal_point_is_explained():
+    """The real typo: --camera-xyz 0.087685 0.042182 0260966 (z = 260966 m)."""
+    pp.check_camera_xyz('--camera-xyz', [0.087685, 0.042182, 0.260966])
+    pp.check_camera_xyz('--camera-xyz', [-0.30, 0.10, 1.2])                   # far but possible
+    with pytest.raises(ValueError, match=r'METRES.*Did you mean 0\.260966\?'):
+        pp.check_camera_xyz('--camera-xyz', [0.087685, 0.042182, 260966.0])
+    with pytest.raises(ValueError, match='millimetres'):
+        pp.check_camera_xyz('--place-camera-xyz', [88.0, 42.0, 261.0])
+    for bad in ([0.1, 0.1, float('nan')], [0.1, float('inf'), 0.3], [3.0, 0.0, 0.3]):
+        with pytest.raises(ValueError):
+            pp.check_camera_xyz('--camera-xyz', bad)
+
+
+def test_the_typo_is_caught_before_the_config_or_ROS_are_touched(monkeypatch):
+    import sys
+    monkeypatch.setattr(sys, 'argv', ['pose_pick.py', '--config', str(ROOT / 'config' / 'pose_pick.yaml'),
+                                      '--camera-xyz', '0.087685', '0.042182', '260966', '--camera-angle', '-87.1'])
+    with pytest.raises(ValueError, match='Did you mean 0.260966'):
+        pp.main()
+
+
 def test_tcp_correction_must_be_two_small_numbers_in_metres():
     pp.check_tcp_correction({})                                          # absent: fine
     pp.check_tcp_correction({'tcp_correction_hand': [0.0025, -0.0012]})

@@ -425,6 +425,26 @@ def lookup_hand(node, buffer, c, seconds=10.0):
     return pose
 
 
+MAX_CAMERA_DISTANCE = 2.0          # m: the wrist camera looks at a table within about a metre
+
+
+def check_camera_xyz(option, xyz):
+    """A point in the camera frame is in METRES, a few tens of centimetres from the lens. Anything else is a typo (a missing
+    decimal point, millimetres): say so before any number is used."""
+    if not all(math.isfinite(v) for v in xyz):
+        raise ValueError(f'{option} {list(xyz)}: every value must be a number')
+    distance = math.sqrt(sum(v * v for v in xyz))
+    if distance > MAX_CAMERA_DISTANCE:
+        big = max(xyz, key=abs)
+        hint = ''
+        if abs(big) >= 1000 and float(big) == int(big):
+            hint = f' Did you mean 0.{abs(int(big)):0>6}?' if abs(big) < 1e6 else ''
+        elif abs(big) >= 10:
+            hint = ' Are these millimetres? They must be metres (0.26 is 26 cm).'
+        raise ValueError(f'{option} {list(xyz)} is {distance:.1f} m from the camera: the values are in METRES, a few tens of '
+                         f'centimetres, e.g. 0.088 0.042 0.261.{hint}')
+
+
 def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_measured_z, label, layers=None,
                           info=None):
     """A top-face point (and optional orientation) in the camera frame -> (x, y, centre_z or None, yaw or None).
@@ -905,6 +925,9 @@ def main():
                                                 or args.place_yaw is not None):
         raise ValueError('--place-camera-angle goes with --place-camera-xyz and replaces --place-camera-quat / --place-yaw')
     camera_used = args.camera_xyz is not None or args.place_camera_xyz is not None
+    for option, value in (('--camera-xyz', args.camera_xyz), ('--place-camera-xyz', args.place_camera_xyz)):
+        if value is not None:
+            check_camera_xyz(option, value)
     if args.ee_pose is not None and not camera_used:
         raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
     if args.layers == 'same':
