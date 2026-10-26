@@ -74,7 +74,8 @@ class GraspNotConfirmed(RuntimeError):
 class AutoMission(pp.Mission):
     """The Mission of pose_pick.py with its own log and a stop-and-explain failure path. Same motions."""
 
-    stage_pick = grasp_pick = truth_target = release_hand = seat_z = None      # filled in by the run (see __init__)
+    stage_pick = grasp_pick = truth_target = release_hand = seat_z = release_yaw_deg = None      # filled in by the run
+    search_wide = False            # the first brick of a row: look for the studs over their whole 8 mm cell
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
     TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up')
 
@@ -178,30 +179,51 @@ class AutoMission(pp.Mission):
 
     SEARCH = ((0, 0), (1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (-1, -1), (1, -1), (-1, 1))      # in units of the search step
 
+    def search_pattern(self):
+        """(cells, step): the sideways tries for a brick that sits on the studs, in units of step, from the middle outwards.
+        The first brick of a row (search_wide) has no known stud grid: it tries the whole 8 mm cell of the studs, ring by ring
+        (place_first_search_rings x place_first_search_step each way, 4 x 1 mm = 81 spots); a brick with a known seat just a few."""
+        if self.search_wide:
+            rings = int(self.c.get('place_first_search_rings', 4))
+            step = float(self.c.get('place_first_search_step', 0.001))
+            cells = sorted(((i, j) for i in range(-rings, rings + 1) for j in range(-rings, rings + 1)),
+                           key=lambda cell: (max(abs(cell[0]), abs(cell[1])), math.atan2(cell[1], cell[0]) % (2 * math.pi)))
+            return cells, step
+        tries = min(int(self.c.get('place_search_tries', 4)), len(self.SEARCH) - 1)
+        return list(self.SEARCH[:tries + 1]), float(self.c.get('place_search_step', 0.0007))
+
     def lower_for_release(self, where):
         """Straight down onto the seat. A brick that stops short (about 1.7 mm = a stud's height) is sitting ON the studs, not in
-        them: lift a little, shift 0.7 mm to one side, and press again, in a small spiral, instead of stopping at once."""
-        step = float(self.c.get('place_search_step', 0.0007))
-        tries = min(int(self.c.get('place_search_tries', 6)), len(self.SEARCH) - 1)
-        pattern = self.SEARCH[:tries + 1]
+        them: lift a little, shift to the next spot of the search pattern, and press again."""
+        pattern, step = self.search_pattern()
         for k, (ux, uy) in enumerate(pattern):
             try:
                 self.go('Lower the brick to the place pose', where['release'], where['yaw'], watch_blocked=True,
                         blocked_height=self.seated_limit())
                 self.place_trace['search_tries'] = k
+                self.place_trace['search_shift_mm'] = [round(ux * step * 1000, 2), round(uy * step * 1000, 2)]
                 if k:
-                    self.say(f'The brick went in after {k} shifted tries.')
+                    self.say(f'The brick went in after {k} shifted tries, {ux * step * 1000:+.1f} mm in x and {uy * step * 1000:+.1f} '
+                             'mm in y from the aligned position.')
                 return where
             except pp.Blocked as problem:
                 self.blocked.append(problem.info)
-                self.say(str(problem))
                 if k == len(pattern) - 1:
-                    raise RuntimeError(f'{problem} The brick was NOT released (it is still in the hand), after '
+                    self.say(str(problem))
+                    hint = ('No seat within +/-' + f'{max(max(abs(i), abs(j)) for i, j in pattern) * step * 1000:.0f} mm of the '
+                            'aligned position: the plate may be turned, or higher or lower than the model. Press a brick onto the plate '
+                            'by hand and start the row with --anchor. ' if self.search_wide else '')
+                    raise RuntimeError(f'{problem} {hint}The brick was NOT released (it is still in the hand), after '
                                        f'{k + 1} tries.') from None
                 nx, ny = pattern[k + 1]
+                if self.search_wide:
+                    self.say(f'  search {k + 1}/{len(pattern)}: on the studs ({problem.info["short_mm"]:+.1f} mm up) at '
+                             f'({ux * step * 1000:+.0f}, {uy * step * 1000:+.0f}) mm; next ({nx * step * 1000:+.0f}, {ny * step * 1000:+.0f}) mm')
+                else:
+                    self.say(str(problem))
+                    self.say(f'The brick sits on top of the studs: lifting and trying again {math.hypot(nx, ny) * step * 1000:.1f} mm '
+                             'to the side of the aligned position.')
                 pp.apply_nudge(where, (nx - ux) * step, (ny - uy) * step, 0.0, 0.0, self.AUTO_KEYS)
-                self.say(f'The brick sits on top of the studs: lifting and trying again {math.hypot(nx, ny) * step * 1000:.1f} mm '
-                         'to the side of the aligned position.')
                 self.go('Lift and shift to try again', where['fine'], where['yaw'])
         return where
 
@@ -241,6 +263,8 @@ class AutoMission(pp.Mission):
                                  'coarse_left_mm': round(coarse * 1000, 2), 'fine_left_mm': round(fine * 1000, 2)})
         where = self.lower_for_release(where)
         self.release_hand = np.array(self.mover.hand_pose()[:3, 3], dtype=float)
+        import smooth_motion as sm
+        self.release_yaw_deg = math.degrees(sm.hand_yaw(self.mover.hand_pose()[:3, :3]))
         self.mover.hand()                       # open: the brick stays where it is
         self.mover.detach_block()
         self.say(f'Brick released with the hand {np.hypot(*(self.release_hand[:2] - target)) * 1000:.2f} mm from its target')

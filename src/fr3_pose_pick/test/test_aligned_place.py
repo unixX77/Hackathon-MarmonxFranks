@@ -215,3 +215,47 @@ def test_the_trace_goes_into_the_log(tmp_path):
     entry = json.loads((tmp_path / 'auto.json').read_text())[-1]
     assert entry['place']['search_tries'] == 0 and entry['pick_grasp_xy'] == pytest.approx([round(float(v), 5) for v in m.grasp_pick[:2]])
     assert entry['place']['drift_mm'] == pytest.approx([1.2, -0.4], abs=0.01)
+
+
+# ----------------------------------------------------------------------------------- the wide search (first row brick)
+def test_the_wide_search_goes_ring_by_ring_from_the_middle():
+    m = fake.mission() if False else mission()
+    m.search_wide = True
+    cells, step = m.search_pattern()
+    assert step == pytest.approx(0.001) and len(cells) == 81 and cells[0] == (0, 0)
+    rings = [max(abs(i), abs(j)) for i, j in cells]
+    assert rings == sorted(rings) and rings.count(1) == 8 and rings.count(4) == 32           # 1, 8, 16, 24, 32 spots per ring
+    assert len(set(cells)) == 81
+    m.search_wide = False
+    cells, step = m.search_pattern()
+    assert len(cells) == CONFIG['place_search_tries'] + 1 and step == pytest.approx(0.0007)
+
+
+def test_the_wide_search_finds_a_seat_that_is_millimetres_off_in_both_axes():
+    """The row's plate has its studs 2 mm in x and 1 mm in y from where the first brick was aimed: the 0.7 mm retries could never
+    reach that; the wide search does, and says where it was."""
+    m = mission(config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0, 'place_fine_tolerance': 1.0},
+                errors=dict(PLACE_ERRORS, **{'Lower the brick to the place pose': (0.0, 0.0, 0.0)}))
+    m.search_wide = True
+    seat = m.mover.seat.copy()
+    m.mover.seat = np.array([seat[0], seat[1], seat[2]])
+    m.mover.extra = {'Lower the brick to the place pose': (-2.0, -1.0, 0.0)}                 # the hand lands 2 mm / 1 mm off the studs
+    m.place_brick()
+    assert m.place_trace['search_shift_mm'] == [2.0, 1.0]                                    # the cell that cancels it
+    assert m.place_trace['search_tries'] > 0 and len(m.blocked) == m.place_trace['search_tries']
+    assert np.hypot(*(m.release_hand[:2] - m.mover.seat[:2])) <= ENGAGE and m.mover.opened == 1
+
+
+def test_when_no_cell_works_it_says_to_use_an_anchor_and_keeps_the_brick():
+    m = mission(config={'place_align_tries': 0, 'place_align_tolerance': 1.0, 'place_fine_tries': 0, 'place_fine_tolerance': 1.0},
+                extra={'Lower the brick to the place pose': (0.0, 5.0, 0.0)})                 # 5 mm off the studs: outside the cell
+    m.search_wide = True
+    with pytest.raises(RuntimeError, match=r'start the row with --anchor.*NOT released.*after 81 tries'):
+        m.place_brick()
+    assert len(m.blocked) == 81 and m.mover.opened == 0 and m.mover.detached == 0
+
+
+def test_the_release_angle_is_recorded():
+    m = mission()
+    m.place_brick()
+    assert m.release_yaw_deg == pytest.approx(0.0)

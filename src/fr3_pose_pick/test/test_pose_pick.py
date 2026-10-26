@@ -29,7 +29,7 @@ def test_explicit_centre_z_and_tcp_z_agree():
     assert by_tcp['centre'][2] == pytest.approx(by_centre['centre'][2])
 
 
-@pytest.mark.parametrize('x, y', [(0.1, 0.0), (0.7, 0.0), (0.4, 0.5), (0.4, -0.5)])
+@pytest.mark.parametrize('x, y', [(0.1, 0.0), (0.7, 0.0), (0.4, 0.6), (0.4, -0.5)])
 def test_pose_outside_workspace_is_refused(x, y):
     with pytest.raises(ValueError, match='outside the allowed window'):
         pp.plan_pick(CONFIG, x, y)
@@ -131,7 +131,7 @@ def test_place_plan_stops_above_the_table_by_the_margin():
 
 def test_place_pose_gets_the_same_checks_as_a_pick():
     with pytest.raises(ValueError, match='outside the allowed window'):
-        pp.plan_place(CONFIG, 0.40, 0.45, 0.0)
+        pp.plan_place(CONFIG, 0.40, 0.60, 0.0)
     pp.plan_place(dict(CONFIG, place_margin=-0.003), 0.40, 0.0, 0.0)       # pressed onto the studs, up to place_max_press: fine
     with pytest.raises(ValueError, match='place_margin'):
         pp.plan_place(dict(CONFIG, place_margin=-0.0031), 0.40, 0.0, 0.0)   # more than place_max_press (3 mm): refused
@@ -198,7 +198,7 @@ def test_absolute_place_is_unchanged_by_the_pick():
 def test_offset_place_is_refused_up_front_if_a_correction_could_push_it_out_of_the_workspace():
     place = {'offset': (0.0, 0.05), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None}
     pp.check_offset_place(CONFIG, pp.plan_pick(CONFIG, 0.396, 0.036), place)            # fine
-    edge = pp.plan_pick(CONFIG, 0.45, 0.25)       # place y=0.30 is still allowed, but not with a +30 mm correction
+    edge = pp.plan_pick(CONFIG, 0.45, CONFIG['workspace_y'][1] - 0.05)     # the place is still inside the window, but not with +30 mm
     with pytest.raises(ValueError, match='corrected by up to'):
         pp.check_offset_place(CONFIG, edge, place)
     with pytest.raises(ValueError):

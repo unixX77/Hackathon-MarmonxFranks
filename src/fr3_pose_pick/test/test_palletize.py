@@ -79,15 +79,15 @@ def test_the_status_shows_the_slots_and_the_room_left(tmp_path):
     assert lines[0].startswith('Row: 2 bricks placed') and 'NEXT' in lines[3] and 'slot  3' in lines[3]
     assert 'x=0.4395 y=0.0448' in lines[3]                                                # -0.0192 + 2 * 0.032
     room = int(lines[-1].split()[2])
-    assert room == int(((0.30 - 0.008 - 0.002) - 0.0448) // 0.032) + 1
+    assert room == int(((CONFIG['workspace_y'][1] - 0.008 - 0.002) - 0.0448) // 0.032) + 1
 
 
 # ------------------------------------------------------------------------------------------- the arguments
 class Capture:
     """Stands in for pose_pick.main: records what it was given and plays the part of the mission's release."""
-    def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4):
+    def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4, release_yaw=1.7):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
-        self.anchors, self.seat_zs, self.grasp_yaw = [], [], grasp_yaw
+        self.anchors, self.seat_zs, self.grasp_yaw, self.release_yaw, self.wides = [], [], grasp_yaw, release_yaw, []
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -97,9 +97,11 @@ class Capture:
         mission = cls.__new__(cls)
         self.anchors.append(cls.anchor)
         self.seat_zs.append(cls.seat_z)
+        self.wides.append(cls.wide)
+        mission.release_yaw_deg = self.release_yaw
         mission.grasp_pick = np.array([0.4263, -0.0056, 0.0002])           # the hand's measured pose at the grasp
         mission.grasp_hand_yaw_deg = self.grasp_yaw
-        mission.release_hand = np.array([self.hand[0], self.hand[1] + (len(cls.state['placed']) * 0.032), 0.0])
+        mission.release_hand = np.array([self.hand[0], self.hand[1] + (len(cls.state['placed']) * 0.032), 0.0003])
         mission.say = lambda text: None
         mission.on_placed = mission.record_slot
         mission.on_placed()
@@ -125,10 +127,12 @@ def test_the_first_brick_is_set_down_relative_to_its_own_pick(run, tmp_path):
     assert argv[:3] == ['--config', str(CONFIG_PATH), '--camera-xyz'] and '--no-inspect' in argv and '--no-step' in argv
     assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == [
         '--place-offset', f'{CONFIG["palletize_start_offset"][0]:.6f}', f'{CONFIG["palletize_start_offset"][1]:.6f}']
-    assert CONFIG['palletize_start_offset'] == [0.0, 0.098]
-    assert '--place' not in argv and argv[argv.index('--place-yaw') + 1] == '0.000000'
+    assert CONFIG['palletize_start_offset'] == [0.0, 0.40]
+    assert '--place' not in argv and '--place-yaw' not in argv                               # at the angle it was picked at
+    assert capture.wides == [True]                                                           # and the studs are searched for
     state = pal.load_state(tmp_path / 'row.json')
     assert state['origin'] == [0.4395, -0.0192] and len(state['placed']) == 1                # measured at the release
+    assert state['row_yaw_deg'] == pytest.approx(1.7) and state['seat_z'] == pytest.approx(0.0003)    # learned where it seated
 
 
 def test_every_next_brick_goes_to_the_next_slot_along_y(run, tmp_path):
@@ -363,3 +367,36 @@ def test_an_old_row_file_without_the_new_fields_still_loads(tmp_path):
     path.write_text(json.dumps(saved))
     loaded = pal.load_state(path)
     assert loaded['seat_z'] is None and loaded['anchored'] is False
+
+
+# ------------------------------------------------------------------- the first brick finds its own seat
+def test_only_the_first_brick_of_an_unanchored_row_searches_widely(run, tmp_path):
+    code, capture = run(PICK)
+    assert capture.wides == [True] and capture.anchors == [False]
+    code, capture = run(PICK)                                                                # slot 2: the row is known now
+    assert capture.wides == [False]
+    code, capture = run(['--reset'] + ANCHOR)
+    assert capture.wides == [False] and capture.anchors == [True]                            # an anchor is already seated
+
+
+def test_the_next_bricks_use_the_angle_and_seat_height_of_the_first_that_seated(run, tmp_path):
+    run(PICK, Capture(release_yaw=1.7))
+    code, capture = run(PICK)
+    argv = capture.calls[0]
+    assert argv[argv.index('--place-yaw') + 1] == '1.700000' and capture.seat_zs == [pytest.approx(0.0003)]
+
+
+def test_a_row_yaw_given_by_hand_is_used_for_the_first_brick_and_not_replaced(run, tmp_path):
+    code, capture = run(PICK + ['--row-yaw', '0'], Capture(release_yaw=1.7))
+    assert capture.calls[0][capture.calls[0].index('--place-yaw') + 1] == '0.000000'
+    assert pal.load_state(tmp_path / 'row.json')['row_yaw_deg'] == 0.0                       # the hand's 1.7 deg does not overwrite it
+
+
+def test_the_far_start_and_the_window_for_it():
+    assert CONFIG['palletize_start_offset'][1] == pytest.approx(0.40)
+    far = CONFIG['workspace_y'][1] - 0.4 + 0.02                                            # a stack at y = -0.10 ... -0.12
+    for pick_y in (-0.12, -0.10, -0.08):
+        pp.plan_place(CONFIG, 0.44, pick_y + CONFIG['palletize_start_offset'][1], 0.0)    # the first slot is inside the window
+    with pytest.raises(ValueError, match='outside the allowed window'):
+        pp.plan_place(CONFIG, 0.44, CONFIG['workspace_y'][1] + 0.01, 0.0)
+    assert far > 0

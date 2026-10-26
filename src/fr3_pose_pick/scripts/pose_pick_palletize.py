@@ -6,9 +6,12 @@ and explain on any failure, the gripper's finger width confirms every grasp, the
 MEASURABLY must be and retried 0.7 mm to the side if it sits on top of the studs). What is different is WHERE the brick goes:
 
   * the first brick is set down --start-offset away from where it was picked (default: palletize_start_offset in the config,
-    0 +0.098: about 10 cm to the robot's left, along +y, clear of the stack it came from), on the table / baseplate;
+    0 +0.40: 40 cm to the robot's left, along +y, clear of the stack it came from), on the table / baseplate, at the angle it
+    was picked at. The robot cannot see the studs of that plate, so if the brick sits on top of them it is tried again over the
+    whole 8 mm stud cell, ring by ring (+-4 mm in x and y, 1 mm apart, up to 81 spots, about 3.5 s each), and the row is taken
+    from where it SEATS: position, angle and seat height. A 16 mm gap is two studs, so every next slot is on the grid too;
   * every next brick goes NEXT TO the one before, along +y, with --gap between them (default 16 mm, so the centres are one
-    brick width plus the gap = 32 mm apart), with the long side along x (--row-yaw 0);
+    brick width plus the gap = 32 mm apart), at the angle of the first (--row-yaw to force one);
   * the row is remembered in a state file (pose_pick_palletize.json), so each run, or each --brick, takes the next slot.
     The slots are measured, not commanded: slot 1 is wherever the first brick really ended up (the hand position at the
     release), the others are exact multiples of the pitch from it.
@@ -21,7 +24,7 @@ ANCHOR: press one brick by hand onto the plate where the row should begin, then
 
 (the camera numbers of that brick). The robot picks it up and puts it back, which it can do reliably, and measures from that: the
 row starts at the anchor's position, with its angle and the height of its seat; the anchor is slot 1 and the next bricks follow
-beside it. Without an anchor the first brick goes --start-offset from its pick and may sit on top of the studs.
+beside it. Without an anchor the first brick searches for the studs by itself (slower, once).
 
 One brick per command, as the poses arrive from your friend:
 
@@ -37,7 +40,7 @@ remembered for every brick (or give it with --ee-pose X Y Z QX QY QZ QW):
 The other options are those of pose_pick.py, except the place ones (this script decides where each brick goes) and the
 questions. Own options:
   --start-offset DX DY   where the FIRST brick goes, from where it was picked (default: palletize_start_offset in the config,
-                         0 0.098); fixed by the first brick
+                         0 0.40); fixed by the first brick
   --gap METRES           space between neighbouring bricks (default 0.016); may be changed while at most one brick is down
   --row-yaw DEG          angle of the long side of the placed bricks from base x (default 0)
   --anchor X Y Z A       start the row from a brick you pressed onto the plate by hand (see above)
@@ -74,7 +77,7 @@ MIN_GAP = 0.008                # the fingers (and the studs' neighbours) need ro
 def new_state(start_offset, gap, row_yaw_deg, width):
     return {'version': 1, 'created': time.strftime('%Y-%m-%d %H:%M:%S'), 'start_offset': [float(v) for v in start_offset],
             'gap': float(gap), 'pitch': float(width + gap), 'row_yaw_deg': float(row_yaw_deg), 'origin': None, 'placed': [],
-            'seat_z': None, 'anchored': False}
+            'seat_z': None, 'anchored': False, 'row_yaw_fixed': False}
 
 
 def load_state(path):
@@ -88,6 +91,7 @@ def load_state(path):
         assert isinstance(state['placed'], list)
         state.setdefault('seat_z', None)
         state.setdefault('anchored', False)
+        state.setdefault('row_yaw_fixed', False)
     except (ValueError, KeyError, TypeError, AssertionError):
         raise ValueError(f'{path} is damaged or not a row file. Look at it, or start again with --reset.') from None
     return state
@@ -154,11 +158,13 @@ class PalletizeMission(auto.AutoMission):
     state = state_path = truth = seat_z = None
     index = 0
     anchor = False                                       # this brick is the anchor: it only defines the row
+    wide = False                                         # the first brick of an unanchored row: search the studs over their whole cell
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.truth_target = type(self).truth             # None for the first brick: it is set down relative to its own pick
-        self.seat_z = type(self).seat_z                  # the row's measured seat height (anchored rows)
+        self.seat_z = type(self).seat_z                  # the row's measured seat height
+        self.search_wide = type(self).wide
         self.on_placed = self.record_slot
 
     def record_slot(self):
@@ -170,8 +176,12 @@ class PalletizeMission(auto.AutoMission):
             yaw = ((float(self.grasp_hand_yaw_deg) + 90.0) % 180.0) - 90.0        # a line: -90 to 90 deg
             cls.state.update(origin=[round(float(hand[0]), 5), round(float(hand[1]), 5)], row_yaw_deg=round(yaw, 3),
                              seat_z=round(float(hand[2]), 5), anchored=True)
-        elif cls.state['origin'] is None:                # the first brick defines the row: where the hand really was
+        elif cls.state['origin'] is None:
+            # The first brick defines the row, wherever it SEATED (the search moved it there): the hand's position, angle and height.
             cls.state['origin'] = [round(float(hand[0]), 5), round(float(hand[1]), 5)]
+            cls.state['seat_z'] = round(float(hand[2]), 5)
+            if not cls.state.get('row_yaw_fixed') and self.release_yaw_deg is not None:
+                cls.state['row_yaw_deg'] = round(((float(self.release_yaw_deg) + 90.0) % 180.0) - 90.0, 3)
         cls.state['placed'].append({'slot': cls.index + 1, 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
                                     'released_hand_xy': [round(float(hand[0]), 5), round(float(hand[1]), 5)]})
         save_state(cls.state_path, cls.state)
@@ -281,6 +291,7 @@ def main(argv=None):
             state = new_state(args.start_offset or c.get('palletize_start_offset') or DEFAULT_START_OFFSET,
                               args.gap if args.gap is not None else DEFAULT_GAP,
                               args.row_yaw if args.row_yaw is not None else 0.0, c['block_size'][1])
+            state['row_yaw_fixed'] = args.row_yaw is not None
         notes = check_row(c, state)
     except (ValueError, OSError) as problem:
         print(f'ERROR: {problem}', file=sys.stderr)
@@ -309,9 +320,11 @@ def main(argv=None):
                 where = 'the anchor brick: picked up and put back where it is; the row is measured from it'
             elif state['origin'] is None:
                 place = ['--place-offset', fmt(state['start_offset'][0]), fmt(state['start_offset'][1])]
-                yaw_args, truth = ['--place-yaw', fmt(state['row_yaw_deg'])], None
-                where = (f'{state["start_offset"][0] * 100:+.1f} cm x, {state["start_offset"][1] * 100:+.1f} cm y from its pick '
-                         '(no anchor: it may sit on top of the studs)')
+                # at the angle it was picked at (the stack's), unless --row-yaw said otherwise
+                yaw_args = ['--place-yaw', fmt(state['row_yaw_deg'])] if state.get('row_yaw_fixed') else []
+                truth = None
+                where = (f'{state["start_offset"][0] * 100:+.1f} cm x, {state["start_offset"][1] * 100:+.1f} cm y from its pick; '
+                         'the studs are searched for around it and the row is taken from where the brick seats')
             else:
                 truth = slot_xy(state, index)
                 place = ['--place', fmt(truth[0]), fmt(truth[1])]
@@ -323,6 +336,7 @@ def main(argv=None):
             PalletizeMission.state, PalletizeMission.state_path, PalletizeMission.index, PalletizeMission.truth = \
                 state, path, index, truth
             PalletizeMission.anchor, PalletizeMission.seat_z = is_anchor, state.get('seat_z')
+            PalletizeMission.wide = (not is_anchor) and state['origin'] is None
             builtins.input = auto.countdown_input(seconds if number == 1 else 0)         # one countdown per command
             sys.argv = [old_argv[0]] + base + pick + place + yaw_args + ['--no-inspect', '--no-step']
             code = pp.main()
