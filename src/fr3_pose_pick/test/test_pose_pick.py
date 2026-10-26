@@ -206,14 +206,14 @@ def test_offset_place_is_refused_up_front_if_a_correction_could_push_it_out_of_t
 
 
 def test_hand_widths_are_fixed_in_the_config():
-    assert CONFIG['open_width'] == pytest.approx(0.018)
+    assert CONFIG['open_width'] == pytest.approx(0.019)
     assert CONFIG['grasp_width'] == pytest.approx(0.015)
     assert CONFIG['grasp_width'] < CONFIG['block_size'][1] < CONFIG['open_width']    # opens wider than the brick, closes on it
 
 
 def test_jaw_clearance_note_only_when_tight():
     note = pp.jaw_clearance_note(CONFIG)
-    assert note and '18 mm' in note and '1.0 mm' in note
+    assert note and '19 mm' in note and '1.5 mm' in note
     assert pp.jaw_clearance_note(dict(CONFIG, open_width=0.025)) is None
 
 

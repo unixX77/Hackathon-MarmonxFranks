@@ -103,11 +103,11 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
 
 ## Hand widths (fixed in the config)
 
-`config/pose_pick.yaml` sets the hand once for every open and close: **open 18 mm** (`open_width`) and
-**close 15 mm** (`grasp_width`), for a 16 mm brick with other bricks right next to it. Nothing to type
-on the command line. `min_open_clearance: 0.001` lowers the config check from its default 5 mm margin
-to the 2 mm that 18 mm leaves. That is only 1 mm of room per side, so the script prints a note at each
-start, and the hand has to be lined up to well under 1 mm sideways and in yaw: use the inspection stop,
+`config/pose_pick.yaml` sets the hand once for every open and close: **open 19 mm** (`open_width`, it was 0.017, then 0.018, and went to
+0.019 on 26 Oct at 18:57 after a finger landed on the brick) and **close 15 mm** (`grasp_width`), for a 16 mm brick with other bricks
+right next to it. Nothing to type on the command line. `min_open_clearance: 0.001` lowers the config check from its default 5 mm margin
+to the 3 mm that 19 mm leaves. That is 1.5 mm of room per side, so the script prints a note at each
+start, and the hand has to be lined up to about 1 mm sideways and in yaw: use the inspection stop,
 and expect the occasional finger landing on the brick. A hand narrower than the brick plus
 `min_open_clearance` is still refused.
 

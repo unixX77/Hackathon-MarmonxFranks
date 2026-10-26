@@ -48,10 +48,10 @@ place_max_press: 0.003          # the brick may be pressed this far below its pl
 scene_table_sink: 0.0035
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
-# (short side 16 mm): open 18 mm, close 15 mm. Change them here, not on the command line.
+# (short side 16 mm): open 19 mm, close 15 mm. Change them here, not on the command line.
 grasp_width: 0.015              # close to this on the brick (the real hand checks it closed on something)
-open_width: 0.018               # open to this: 1 mm per side around a 16 mm brick, so the hand must be
-                                # lined up to about 1 mm sideways and in yaw, or a finger lands on the brick
+open_width: 0.019               # open to this: 1.5 mm per side around a 16 mm brick (0.017 -> 0.018 on 25 Oct, 0.019 on 26 Oct 18:57 after a finger
+                                # landed on the brick), so the hand must be lined up to about 1.5 mm sideways and in yaw
 min_open_clearance: 0.001       # smallest open_width - brick short side the config check accepts (default 5 mm)
 # Optional: open the hand wider for the PICK descent only (null = open_width). The jaws then land on both sides of the
 # brick with room to spare, and closing to grasp_width centres the brick across; at the release it opens to open_width.
