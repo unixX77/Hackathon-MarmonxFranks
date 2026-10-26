@@ -92,6 +92,12 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
 ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.yaml \
      --camera-xyz 0.035240 0.005403 0.318830 --camera-angle 80 --place-offset 0 0.07
 ```
+  `A` in `--camera-angle A` is the number your teammate sends. It must mean: the angle of the brick's long side in
+  the image, from the image's right toward the image's down (clockwise on the screen). If his number means
+  something else, fix it once in `config/pose_pick.yaml`: `used = camera_angle_sign * his_angle +
+  camera_angle_offset_deg` (counter-clockwise positive: `camera_angle_sign: -1`; the angle of the short side:
+  `camera_angle_offset_deg: 90`). Find out with three bricks: long side vertical on the screen should give 90 (or
+  -90), horizontal 0, and tilted 10 degrees clockwise from vertical 80. The run prints the converted angle.
 - The hand-eye result missed its strict gate (typical error about 3 mm / 0.9 deg), so expect a few mm
   of error from the conversion alone: use the inspection stop to correct it.
 

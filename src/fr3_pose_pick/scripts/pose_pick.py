@@ -304,6 +304,21 @@ def check_tool_geometry(c):
                          f'grasp_tcp_height to at least {(below + margin) * 1000:.1f} mm (about {(below + 0.003) * 1000:.0f} mm is good).')
 
 
+def convert_camera_angle(c, angle_deg):
+    """Your teammate's brick angle -> the image angle this tool expects: the angle of the brick's LONG side in the
+    image, degrees, from the image's right toward the image's down (clockwise on the screen). The default
+    (sign 1, offset 0) means "same convention". A different one is fixed once in the config:
+        used = camera_angle_sign * his_angle + camera_angle_offset_deg
+    e.g. counter-clockwise positive: sign -1; the angle of the SHORT side: offset 90."""
+    sign = c.get('camera_angle_sign', 1)
+    offset = c.get('camera_angle_offset_deg', 0.0)
+    if isinstance(sign, bool) or sign not in (1, -1):
+        raise ValueError('camera_angle_sign must be 1 or -1')
+    if isinstance(offset, bool) or not isinstance(offset, (int, float)) or not math.isfinite(offset) or abs(offset) > 360:
+        raise ValueError('camera_angle_offset_deg must be a number of degrees (between -360 and 360)')
+    return sign * float(angle_deg) + float(offset)
+
+
 def check_tcp_correction(c):
     """tcp_correction_hand must be two small numbers (metres). More than 1 cm is a typo or a unit mistake."""
     value = c.get('tcp_correction_hand')
@@ -693,6 +708,7 @@ def main():
     apply_baseplate(c)
     check_tool_geometry(c)
     check_tcp_correction(c)
+    convert_camera_angle(c, 0.0)                    # validates camera_angle_sign / camera_angle_offset_deg
     yaw = None
     if args.quat:
         yaw, tilt = yaw_from_quaternion(args.quat)
@@ -749,9 +765,17 @@ def main():
         if args.camera_angle is not None or args.place_camera_angle is not None:
             from camera_frame import image_angle_to_quat
             if args.camera_angle is not None:
-                pick_quat, pick_axis = image_angle_to_quat(args.camera_angle), 'x'
+                used = convert_camera_angle(c, args.camera_angle)
+                pick_quat, pick_axis = image_angle_to_quat(used), 'x'
+                if used != args.camera_angle:
+                    print(f'Pick: the angle you gave ({args.camera_angle:.1f}) is converted with the config '
+                          f'(camera_angle_sign/offset) to an image angle of {used:.1f} deg')
             if args.place_camera_angle is not None:
-                place_quat, place_axis = image_angle_to_quat(args.place_camera_angle), 'x'
+                used = convert_camera_angle(c, args.place_camera_angle)
+                place_quat, place_axis = image_angle_to_quat(used), 'x'
+                if used != args.place_camera_angle:
+                    print(f'Place: the angle you gave ({args.place_camera_angle:.1f}) is converted with the config '
+                          f'to an image angle of {used:.1f} deg')
         given = {}
         if args.pose is not None:
             z = args.pose[2] if len(args.pose) == 3 else (

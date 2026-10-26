@@ -158,3 +158,29 @@ def test_height_correction_at_the_inspection_stop():
     for key, z in before.items():
         assert plan[key][2] == pytest.approx(z + 0.002)
     assert plan['grip'][:2] == pytest.approx([0.40, 0.0])
+
+
+def test_the_teammates_angle_convention_is_fixed_once_in_the_config():
+    assert pp.convert_camera_angle(CONFIG, 80.0) == 80.0                       # default: same convention, nothing changes
+    assert CONFIG['camera_angle_sign'] == 1 and CONFIG['camera_angle_offset_deg'] == 0.0
+    ccw = dict(CONFIG, camera_angle_sign=-1)                                   # his angle is counter-clockwise positive
+    assert pp.convert_camera_angle(ccw, 10.0) == -10.0
+    short = dict(CONFIG, camera_angle_offset_deg=90.0)                          # his angle is the SHORT side
+    assert pp.convert_camera_angle(short, 0.0) == 90.0
+    both = dict(CONFIG, camera_angle_sign=-1, camera_angle_offset_deg=90.0)     # e.g. counter-clockwise from vertical
+    assert pp.convert_camera_angle(both, 10.0) == 80.0
+    for bad in (dict(camera_angle_sign=2), dict(camera_angle_sign=True), dict(camera_angle_sign=0),
+                dict(camera_angle_offset_deg='x'), dict(camera_angle_offset_deg=1000), dict(camera_angle_offset_deg=float('nan'))):
+        with pytest.raises(ValueError, match='camera_angle'):
+            pp.convert_camera_angle(dict(CONFIG, **bad), 0.0)
+
+
+def test_a_converted_angle_gives_the_same_base_yaw_as_the_angle_in_the_tool_convention():
+    cf = load('camera_frame')
+    hand = cf.pose_matrix([0.40, 0.0, 0.30], [1.0, 0.0, 0.0, 0.0])
+    hand_cam = cf.pose_matrix([0.05, -0.04, -0.045], Rotation.from_euler('z', 90, degrees=True).as_quat())
+    ccw = dict(CONFIG, camera_angle_sign=-1)
+    his_angle = -80.0                                                          # counter-clockwise positive: this is 80 clockwise
+    a = cf.camera_yaw_to_base(hand, hand_cam, cf.image_angle_to_quat(pp.convert_camera_angle(ccw, his_angle)), 'x')[0]
+    b = cf.camera_yaw_to_base(hand, hand_cam, cf.image_angle_to_quat(80.0), 'x')[0]
+    assert a == pytest.approx(b, abs=1e-9)

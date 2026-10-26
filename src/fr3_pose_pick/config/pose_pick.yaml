@@ -95,6 +95,12 @@ table_check_tolerance: 0.008    # refuse when the converted top face is further 
 camera_height_bias: 0.0037
 layer_snap_tolerance: 0.003     # within this of a whole layer (m): use the exact layer height
 max_brick_top_above_table: 0.12 # a top face higher than this above the table is refused (m)
+# Your teammate's brick angle (--camera-angle) means: the angle of the brick's LONG side in the image, degrees, from
+# the image's right toward the image's down (clockwise on the screen). If his number means something else, fix
+# it ONCE here:  used = camera_angle_sign * his_angle + camera_angle_offset_deg
+#   counter-clockwise positive -> sign -1      angle of the SHORT side -> offset 90 (or -90)
+camera_angle_sign: 1
+camera_angle_offset_deg: 0.0
 max_nudge_z_step: 0.005         # one z correction at the inspection stop: at most 5 mm ...
 max_total_nudge_z: 0.015        # ... and 15 mm in total
 
