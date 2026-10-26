@@ -146,7 +146,8 @@ place_search_step: 0.0007       # m: a brick sitting on top of the studs is trie
 place_search_tries: 6           # at most this many shifted tries (up to 8) before the run stops with the brick still in the hand
 
 # Palletizing (pose_pick_palletize.py): where the FIRST brick of a new row goes, from where it was picked (m; x, y in the base
-# frame, +y = to the robot's left). 0.08 is exactly 10 studs, so the first slot is on the stud grid when the stack and the row are
-# on aligned baseplates; 0.078 (set 2026-10-26 on request, y -2 mm) is for a row plate that sits 2 mm off the stack's grid.
-# Only a NEW row reads this: a started row keeps its own (--reset starts again). --start-offset DX DY overrides it for one row.
-palletize_start_offset: [0.0, 0.078]
+# frame, +y = to the robot's left). Set 2026-10-26 on request: 10 cm away in +y, less the 2 mm asked for earlier = 0.098. A stud is
+# 8 mm: on aligned baseplates the slot is on the stud grid at 0.096 or 0.104, not at 0.100; the -2 mm is for a row plate that sits
+# off the stack's grid by that much. Only a NEW row reads this: a started row keeps its own (--reset starts again).
+# --start-offset DX DY overrides it for one row.
+palletize_start_offset: [0.0, 0.098]

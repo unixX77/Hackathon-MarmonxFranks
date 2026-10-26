@@ -6,7 +6,7 @@ and explain on any failure, the gripper's finger width confirms every grasp, the
 MEASURABLY must be and retried 0.7 mm to the side if it sits on top of the studs). What is different is WHERE the brick goes:
 
   * the first brick is set down --start-offset away from where it was picked (default: palletize_start_offset in the config,
-    0 +0.078: about 8 cm to the robot's left, along +y, clear of the stack it came from), on the table / baseplate;
+    0 +0.098: about 10 cm to the robot's left, along +y, clear of the stack it came from), on the table / baseplate;
   * every next brick goes NEXT TO the one before, along +y, with --gap between them (default 16 mm, so the centres are one
     brick width plus the gap = 32 mm apart), with the long side along x (--row-yaw 0);
   * the row is remembered in a state file (pose_pick_palletize.json), so each run, or each --brick, takes the next slot.
@@ -26,7 +26,7 @@ or several bricks in one go (the arm moves in between, so give the pose the pict
 The other options are those of pose_pick.py, except the place ones (this script decides where each brick goes) and the
 questions. Own options:
   --start-offset DX DY   where the FIRST brick goes, from where it was picked (default: palletize_start_offset in the config,
-                         0 0.078); fixed by the first brick
+                         0 0.098); fixed by the first brick
   --gap METRES           space between neighbouring bricks (default 0.016); fixed by the first brick
   --row-yaw DEG          angle of the long side of the placed bricks from base x (default 0)
   --brick X Y Z A        a brick to pick: camera point and angle (repeat it; needs --ee-pose when there are several)

@@ -120,7 +120,7 @@ def test_the_first_brick_is_set_down_relative_to_its_own_pick(run, tmp_path):
     assert argv[:3] == ['--config', str(CONFIG_PATH), '--camera-xyz'] and '--no-inspect' in argv and '--no-step' in argv
     assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == [
         '--place-offset', f'{CONFIG["palletize_start_offset"][0]:.6f}', f'{CONFIG["palletize_start_offset"][1]:.6f}']
-    assert CONFIG['palletize_start_offset'] == [0.0, 0.078]
+    assert CONFIG['palletize_start_offset'] == [0.0, 0.098]
     assert '--place' not in argv and argv[argv.index('--place-yaw') + 1] == '0.000000'
     state = pal.load_state(tmp_path / 'row.json')
     assert state['origin'] == [0.4395, -0.0192] and len(state['placed']) == 1                # measured at the release
