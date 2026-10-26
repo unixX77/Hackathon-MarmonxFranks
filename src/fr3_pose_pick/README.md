@@ -240,8 +240,17 @@ same config, so every locked value (grasp height, centring, place height, grasp 
     ros2 run fr3_pose_pick pose_pick_auto.py --config src/fr3_pose_pick/config/pose_pick.yaml \
         --camera-xyz X Y Z --camera-angle A          # same options as pose_pick.py, plus --countdown 3..60
 
-- **Same pose by default.** With no place option the brick is put back down exactly where it was picked: same x, y and angle,
-  released at the locked place height (`place_margin`). `--place`, `--place-offset`, `--place-camera-xyz` or `--pallet` put it
+- **Same pose by default.** With no place option the brick is put back down exactly where it was picked: same x, y, angle
+  and the same layer (`--place-layers same`: a brick taken from on top of another goes back on top of it, a brick from the
+  table goes back on the table), released at the locked place height (`place_margin`). The arm lands with the same small
+  tracking error at the pick and the place (1 to 2 mm, measured: dx -1.5 dy +1.4 down, dx -1.5 dy +0.6 down at the place), so
+  commanding the same pose returns the brick to the same spot within about 0.5 mm; the measured grasp pose is not used instead,
+  that would count the error twice.
+- **It trusts the gripper, not the pose.** After the hand closes and again after the lift it reads the finger width from
+  `franka_gripper/joint_states` and stops when it does not fit a held brick (`grasp_check_tolerance` 3 mm around the brick width;
+  `hold_check_tolerance` 1 mm change between the grasp and the end of the lift: a dropped brick lets the fingers close). The
+  Franka Hand has no force sensor: its effort reads 0, so there is no force feedback, only the width and the grasp result.
+  `pose_pick.py` prints the same widths and only warns. Every width goes to `pose_pick_auto_log.json` (`finger_width_mm`). `--place`, `--place-offset`, `--place-camera-xyz` or `--pallet` put it
   somewhere else instead (`--place-offset 0 0.05` is 5 cm to the robot's left).
 - **No questions.** "Type GO" becomes a countdown (default 5 s; Ctrl+C or the e-stop cancels). The inspection stops, step mode
   and correction prompts are always off, `--step`, `--inspect` and `--place-inspect` are refused, and a prompt that still
@@ -257,6 +266,15 @@ same config, so every locked value (grasp height, centring, place height, grasp 
   or pass `--ee-pose X Y Z QX QY QZ QW`. One brick per run; with `--pallet` each run takes the next free slot.
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
+
+## The place stopped at 95 %: the planning-scene table sits 3.5 mm low (`scene_table_sink`)
+
+A place with `place_margin: -0.001` presses the brick 1 mm onto the studs. MoveIt checks the attached brick against the table box
+of the planning scene, called that a collision at the last waypoint of the lowering, and answered "straight line not possible
+(reached 95 %)". The scene table is now `scene_table_sink` (3.5 mm, at least `place_max_press`) below the real surface; only the
+planning scene changes, every height the code checks still uses `table_top_z`. The same run also showed that "the same pose"
+put a brick taken from layer 2 down on the table: fixed with `--place-layers same`, and the smoothing spline no longer fails on
+short 5-point moves (it picked degree 4, which scipy refuses, and fell back to the old timing).
 
 ## Locked settings (2026-10-26, real robot, new thin tips, two baseplates)
 

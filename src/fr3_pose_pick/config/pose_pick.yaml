@@ -42,6 +42,10 @@ clearance: 0.10                 # hover / lift height above the grasp
 place_margin: -0.001            # LOCKED 2026-10-26: release height above the seat; negative = pressed 1 mm onto the studs (-2 mm typed at the place, then 1 mm more)
 place_inspect_height: 0.03      # the place inspection stop: the brick pauses this far above the release height (m)
 place_max_press: 0.003          # the brick may be pressed this far below its planned seat in total (place_margin and a correction at the place together) (m)
+# The planning-scene table is this much LOWER than the real surface (table_top_z), so that a brick pressed onto the studs
+# (place_margin below 0, up to place_max_press) is not a 'collision' for MoveIt, which stopped the last mm of the place at
+# 95 %. Only the scene changes; every height the code checks still uses table_top_z. At least place_max_press.
+scene_table_sink: 0.0035
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
 # (short side 16 mm): open 18 mm, close 15 mm. Change them here, not on the command line.
@@ -74,6 +78,12 @@ blocked_sideways: 0.0035
 tcp_correction_hand: [-0.0130, 0.0045]   # LOCKED 2026-10-26 from the good pick (x -3.0 mm, y -0.5 mm at the stop)
 grasp_force: 40.0                # N. Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
 gripper_speed: 0.02
+# What the gripper reports once the hand has closed. The Franka Hand has NO force sensor (its effort reads 0): the finger
+# width is the feedback. A held brick reads block_size[1] + hand_zero_width +/- grasp_check_tolerance, and the width must not
+# change by more than hold_check_tolerance between the grasp and the end of the lift (a dropped brick lets the fingers close).
+# pose_pick_auto.py stops on it; pose_pick.py only prints a warning.
+grasp_check_tolerance: 0.003
+hold_check_tolerance: 0.001
 # Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the
 # hand stays on the line), which made the arm jerk. true = keep the hand on exactly the same line but remove the wobble and
 # move at one constant speed with smooth starts and stops (checked before every move; if the check fails the old timing

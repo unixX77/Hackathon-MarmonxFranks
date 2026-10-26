@@ -165,6 +165,13 @@ def fallback_timing(q, scale, ramp=RAMP_SECONDS):
 
 
 # ------------------------------------------------------------------------------- main entry
+def spline_degree(points):
+    """Degree of the interpolating spline through `points` samples: quintic from six points on, else the highest odd
+    degree the points allow (scipy refuses degree 4, which the old rule picked for exactly five points; the 3-point
+    quadratic is the one even degree it accepts)."""
+    return {2: 1, 3: 2, 4: 3, 5: 3}.get(points, 5)
+
+
 def smooth_trajectory(q, scale, ramp=RAMP_SECONDS, dt=0.05, vmax=VMAX, max_line_error=0.0005, max_turn_error=0.0006):
     """Turn the planner's joint points q (N x 7, a straight Cartesian line) into a smooth timed trajectory.
 
@@ -204,7 +211,7 @@ def smooth_trajectory(q, scale, ramp=RAMP_SECONDS, dt=0.05, vmax=VMAX, max_line_
         return fallback(f'smoothing would move a joint by {jitter:.2f} rad')
     # 3. a quintic spline through them
     try:
-        spline = make_interp_spline(x, smooth_q, k=min(5, n - 1) if n - 1 != 2 else 2)
+        spline = make_interp_spline(x, smooth_q, k=spline_degree(n))
     except ValueError as problem:
         return fallback(f'spline failed: {problem}')
     d1, d2 = spline.derivative(1), spline.derivative(2)

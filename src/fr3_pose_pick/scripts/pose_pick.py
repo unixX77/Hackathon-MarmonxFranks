@@ -180,10 +180,11 @@ def nearest_layer(c, top_z):
 
 
 def layers_arg(text):
-    """argparse type for --layers / --place-layers: a whole number 1..10, or 'auto'."""
+    """argparse type for --layers / --place-layers: a whole number 1..10, or 'auto'; 'same' (only for --place-layers) =
+    set it down at the height it was picked from."""
     import argparse as _argparse
-    if text.strip().lower() == 'auto':
-        return 'auto'
+    if text.strip().lower() in ('auto', 'same'):
+        return text.strip().lower()
     try:
         n = int(text)
     except ValueError:
@@ -197,10 +198,12 @@ def resolve_place(c, pick_plan, place):
     """The place plan for the pick as it stands now. A place given as an offset follows the pick position
     (including any inspection correction, and on the table); a place yaw left out keeps the picked angle."""
     yaw = place['yaw'] if place['yaw'] is not None else pick_plan['yaw']
+    z = place.get('z')
+    if z == 'pick':                    # --place-layers same: in the layer the brick was picked from, not on the table
+        z = pick_plan['centre'][2]
     if place.get('offset') is not None:
-        return plan_place(c, pick_plan['centre'][0] + place['offset'][0], pick_plan['centre'][1] + place['offset'][1], yaw,
-                          place.get('z'))
-    return plan_place(c, *place['xy'], yaw, place['z'], place['is_tcp'])
+        return plan_place(c, pick_plan['centre'][0] + place['offset'][0], pick_plan['centre'][1] + place['offset'][1], yaw, z)
+    return plan_place(c, *place['xy'], yaw, z, place['is_tcp'])
 
 
 def check_offset_place(c, pick_plan, place):
@@ -314,6 +317,30 @@ def apply_baseplate(c):
     c['table_center'] = [c['table_center'][0], c['table_center'][1], c['table_center'][2] + thickness]
     c['_baseplate_applied'] = True
     return c
+
+
+def scene_config(c):
+    """The config the PLANNING SCENE is built from: the table box sits scene_table_sink lower than the real surface, so
+    that a brick pressed onto the studs (place_margin below 0, up to place_max_press) is not a collision for MoveIt (it
+    stopped the last millimetres of the place at 95 %). Only the scene changes; every height the code checks still uses
+    table_top_z."""
+    sink = float(c.get('scene_table_sink', 0.0))
+    if not sink:
+        return c
+    centre = list(c['table_center'])
+    centre[2] -= sink
+    return dict(c, table_center=centre)
+
+
+def check_scene_sink(c):
+    sink = c.get('scene_table_sink', 0.0)
+    if isinstance(sink, bool) or not isinstance(sink, (int, float)) or not 0 <= sink <= 0.01:
+        raise ValueError('scene_table_sink is in METRES, 0 to 1 cm (0.0035 is 3.5 mm)')
+    press = float(c.get('place_max_press', 0.003))
+    if sink < press:
+        raise ValueError(f'scene_table_sink ({sink * 1000:.1f} mm) is less than the {press * 1000:.1f} mm the brick may be '
+                         'pressed into the surface (place_max_press): MoveIt would call that a collision and stop the '
+                         'last millimetres of the place')
 
 
 def check_tool_geometry(c):
@@ -484,6 +511,7 @@ class Mission:
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
         self.on_placed = on_placed    # called once the brick is released (the pallet remembers its slot)
         self.blocked = []                                # every time the hand was stopped on the way down
+        self.grasp_widths = {}                           # what the gripper reported: after closing, after the lift
         self.place_inspect = place_inspect               # stop above the place spot for corrections
         self.place_nudge = np.zeros(4)                   # total correction at the place: dx, dy (m), dyaw (deg), dz (m)
         self.nudge = np.zeros(4)                                    # total dx, dy (m), dyaw (deg), dz (m)
@@ -492,7 +520,7 @@ class Mission:
         smooth_motion.MAX_WRIST_SWING = float(c['max_wrist_swing'])  # joint 7 may turn further
         self.marker_type = Marker
         self.marker_pub = node.create_publisher(Marker, '/lego_estimate_marker', 1)
-        self.mover = Mover(node, c, buffer, plan['block_in_tcp'])
+        self.mover = Mover(node, scene_config(c), buffer, plan['block_in_tcp'])
         self.mover.prepare_scene()
 
     def say(self, text):
@@ -601,6 +629,39 @@ class Mission:
                 self.correct_place()
                 where = self.place_plan()
         return where
+
+    def grasp_problem(self, when, width):
+        """None when the finger width the gripper reports fits a brick that is held; else what is wrong. The Franka Hand
+        has no force sensor (effort reads 0): the width is the feedback. A held brick reads block_size[1] (+ hand_zero_width);
+        after the lift it must not have changed by more than hold_check_tolerance (a dropped brick lets the fingers close)."""
+        expected = self.c['block_size'][1] + float(self.c.get('hand_zero_width', 0.0))
+        tolerance = float(self.c.get('grasp_check_tolerance', 0.003))
+        if width is None:
+            return 'the gripper reports no finger width (franka_gripper/joint_states is silent)'
+        if abs(width - expected) > tolerance:
+            return (f'the fingers read {width * 1000:.1f} mm but a held brick reads {expected * 1000:.1f} +/- '
+                    f'{tolerance * 1000:.1f} mm: the brick is not (or not only) between the fingers')
+        first = self.grasp_widths.get('after closing')
+        if when != 'after closing' and first is not None and abs(width - first) > float(self.c.get('hold_check_tolerance', 0.001)):
+            return (f'the fingers moved from {first * 1000:.1f} to {width * 1000:.1f} mm since the grasp: the brick is '
+                    'slipping or fell')
+        return None
+
+    def check_grasp(self, when):
+        """Read the gripper's finger width after the hand has closed and again after the lift, print it, and hand any
+        problem to grasp_alert (a warning here; the autonomous script stops)."""
+        self.spin(0.3)
+        width = self.mover.finger_width()
+        problem = self.grasp_problem(when, width)
+        if width is not None:
+            self.grasp_widths[when] = width
+        self.say(f'Gripper {when}: ' + ('no width reported' if width is None else f'fingers at {width * 1000:.1f} mm')
+                 + ('' if problem else ' (a held brick)'))
+        if problem:
+            self.grasp_alert(when, problem)
+
+    def grasp_alert(self, when, problem):
+        self.say(f'WARNING ({when}): {problem}')
 
     def correct_offset(self):
         from smooth_motion import StepAbort
@@ -737,8 +798,10 @@ class Mission:
         self.grasp_hand_yaw_deg = math.degrees(hand_yaw(self.mover.hand_pose()[:3, :3]))   # for measure_grasp_offset.py
         self.mover.hand(close=True)
         self.say('Grasp reported success')
+        self.check_grasp('after closing')
         self.mover.attach_block()
         self.go('Lift the brick', p['above'])
+        self.check_grasp('after the lift')
         if self.place is None:
             self.save_log()
             self.say('DONE: brick is held above its place')
@@ -789,8 +852,9 @@ def main():
     parser.add_argument('--layers', type=layers_arg, metavar='N|auto',
                         help='The brick to pick is in layer N of a stack (1 = on the table, 2 = on top of one brick, ...), '
                              'or auto = work it out from the camera height (refuses when it cannot tell)')
-    parser.add_argument('--place-layers', type=layers_arg, metavar='N|auto',
-                        help='Put the brick down as layer N of a stack (1 = on the table, 2 = on top of one brick, ...)')
+    parser.add_argument('--place-layers', type=layers_arg, metavar='N|auto|same',
+                        help='Put the brick down as layer N of a stack (1 = on the table, 2 = on top of one brick, ...); '
+                             'same = in the layer it was picked from (with --place or --place-offset)')
     parser.add_argument('--place-yaw', type=float, metavar='DEG',
                         help='Long-axis angle of the placed brick (default: the angle it was picked at)')
     group = parser.add_mutually_exclusive_group()
@@ -843,6 +907,8 @@ def main():
     camera_used = args.camera_xyz is not None or args.place_camera_xyz is not None
     if args.ee_pose is not None and not camera_used:
         raise ValueError('--ee-pose is only used with --camera-xyz / --place-camera-xyz')
+    if args.layers == 'same':
+        raise ValueError("--layers same does not exist: 'same' is only for --place-layers")
     if args.layers is not None:
         if args.use_measured_z:
             raise ValueError('--layers and --use-measured-z are two ways to give the height: use one')
@@ -856,6 +922,9 @@ def main():
             raise ValueError('--place-layers and --use-measured-z are two ways to give the height: use one')
         if args.place_layers == 'auto' and args.place_camera_xyz is None:
             raise ValueError('--place-layers auto needs --place-camera-xyz')
+        if args.place_layers == 'same' and args.place is None and args.place_offset is None:
+            raise ValueError('--place-layers same needs --place X Y or --place-offset DX DY (the camera and the pallet '
+                             'give their own height)')
         if args.place is not None and len(args.place) == 3:
             raise ValueError('--place-layers sets the height: leave out the Z of --place')
     if (args.pallet_file or args.pallet_slot is not None) and not args.pallet:
@@ -867,6 +936,7 @@ def main():
     apply_baseplate(c)
     check_tool_geometry(c)
     check_pick_open_width(c)
+    check_scene_sink(c)
     check_tcp_correction(c)
     convert_camera_angle(c, 0.0)                    # validates camera_angle_sign / camera_angle_offset_deg
     yaw = None
@@ -953,6 +1023,8 @@ def main():
         validate(task_config(c, plan))
         place, on_placed, pal, pal_state, pal_index, pallet_notes = None, None, None, None, None, []
         stack_z = layer_centre_z(c, args.place_layers) if isinstance(args.place_layers, int) and args.place_layers > 1 else None
+        if args.place_layers == 'same':
+            stack_z = 'pick'                          # the height the brick was picked from
         if args.place is not None:
             place = {'xy': (args.place[0], args.place[1]), 'z': args.place[2] if len(args.place) == 3 else stack_z,
                      'is_tcp': args.place_is_tcp,

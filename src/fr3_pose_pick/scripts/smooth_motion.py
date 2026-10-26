@@ -114,6 +114,9 @@ class Mover:
         self.executor = ActionClient(node, ExecuteTrajectory, 'execute_trajectory')
         self.move_client = ActionClient(node, Move, 'franka_gripper/move')
         self.grasp_client = ActionClient(node, Grasp, 'franka_gripper/grasp')
+        from sensor_msgs.msg import JointState
+        self.finger_positions, self.finger_stamp = {}, None
+        node.create_subscription(JointState, 'franka_gripper/joint_states', self._on_fingers, 10)
         if not self.path_client.wait_for_service(timeout_sec=15):
             raise RuntimeError('compute_cartesian_path unavailable: is MoveIt running?')
         if not self.scene_client.wait_for_service(timeout_sec=15):
@@ -307,6 +310,22 @@ class Mover:
                                f'code {result.result.error_code.val})')
 
     # -------------------------------------------------------------------- hand
+    def _on_fingers(self, message):
+        import time
+        for name, position in zip(message.name, message.position):
+            if 'finger' in name:
+                self.finger_positions[name] = float(position)
+        self.finger_stamp = time.monotonic()
+
+    def finger_width(self, max_age=1.0):
+        """How far apart the fingers are (m): the two finger positions added, from the gripper's own joint states.
+        None when no fresh reading arrived. (The Franka Hand reports positions only: its effort reads 0, there is no
+        force sensor, so the width is the feedback on whether a brick is held.)"""
+        import time
+        if len(self.finger_positions) < 2 or self.finger_stamp is None or time.monotonic() - self.finger_stamp > max_age:
+            return None
+        return sum(self.finger_positions.values())
+
     def hand(self, close=False, width=None):
         """Open (to `width`, default open_width) or close (to grasp_width) the hand."""
         from action_msgs.msg import GoalStatus

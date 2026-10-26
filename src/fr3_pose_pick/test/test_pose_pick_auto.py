@@ -38,7 +38,7 @@ def test_no_other_question_is_ever_answered(monkeypatch, prompt):
 
 # ------------------------------------------------------------------------------------------- the arguments
 def test_countdown_option_is_taken_out_and_checked():
-    same = ['--place-offset', '0', '0']
+    same = auto.SAME_POSE
     assert auto.parse_own(['--config', 'c.yaml', '--pose', '0.4', '0.1']) == (5, ['--config', 'c.yaml', '--pose', '0.4', '0.1'] + same)
     assert auto.parse_own(['--countdown', '8', '--pose', '0.4', '0.1']) == (8, ['--pose', '0.4', '0.1'] + same)
     assert auto.parse_own(['--pose', '0.4', '0.1', '--countdown=10'])[0] == 10
@@ -46,7 +46,9 @@ def test_countdown_option_is_taken_out_and_checked():
 
 def test_with_no_place_given_the_brick_goes_back_where_it_was_picked():
     _, rest = auto.parse_own(['--camera-xyz', '0', '0', '0.3'])
-    assert rest[-3:] == ['--place-offset', '0', '0']                                      # offset 0 0 = the same pose
+    assert rest[-5:] == ['--place-offset', '0', '0', '--place-layers', 'same']            # the same pose and the same layer
+    _, rest = auto.parse_own(['--camera-xyz', '0', '0', '0.3', '--place-layers', '2'])
+    assert rest[-3:] == ['--place-offset', '0', '0'] and '2' in rest and 'same' not in rest   # a layer you gave is kept
     for given in (['--place', '0.4', '0.2'], ['--place-offset', '0', '0.05'], ['--place-camera-xyz', '0', '0', '0.3'],
                   ['--pallet']):
         _, rest = auto.parse_own(['--camera-xyz', '0', '0', '0.3'] + given)
@@ -54,13 +56,19 @@ def test_with_no_place_given_the_brick_goes_back_where_it_was_picked():
 
 
 def test_the_same_pose_place_really_is_the_pick_pose():
-    """Offset 0 0 through the real planning: same x, y and angle, release 1 mm below the grasp height (place_margin)."""
-    plan = pp.plan_pick(CONFIG, 0.4565, 0.0664, None, 0.0)
-    where = pp.resolve_place(CONFIG, plan, {'offset': (0.0, 0.0), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None})
-    assert where['grip'] == plan['grip'] and where['centre'] == plan['centre'] and where['yaw'] == plan['yaw']
-    assert where['release'][:2] == plan['grip'][:2]
-    assert where['release'][2] == pytest.approx(plan['grip'][2] + CONFIG['place_margin'])
-    pp.check_offset_place(CONFIG, plan, {'offset': (0.0, 0.0), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None})                           # valid for every allowed correction
+    """Offset 0 0 with layers 'same' through the real planning: same x, y, angle AND height, whatever layer the brick
+    was in (the first autonomous run took a brick from layer 2 and tried to put it on the table)."""
+    for pick_z in (None, pp.layer_centre_z(CONFIG, 2)):
+        plan = pp.plan_pick(CONFIG, 0.4565, 0.0664, pick_z, 0.0)
+        place = {'offset': (0.0, 0.0), 'xy': None, 'z': 'pick', 'is_tcp': False, 'yaw': None}
+        where = pp.resolve_place(CONFIG, plan, place)
+        assert where['grip'] == plan['grip'] and where['centre'] == plan['centre'] and where['yaw'] == plan['yaw']
+        assert where['release'][:2] == plan['grip'][:2]
+        assert where['release'][2] == pytest.approx(plan['grip'][2] + CONFIG['place_margin'])
+        pp.check_offset_place(CONFIG, plan, place)
+    on_table = pp.resolve_place(CONFIG, plan, dict(place, z=None))                        # without 'same': always the table
+    assert on_table['centre'][2] == pytest.approx(pp.plan_pick(CONFIG, 0.4565, 0.0664)['centre'][2])
+    assert on_table['centre'][2] < plan['centre'][2] - 0.009                           # valid for every allowed correction
     for bad in (['--countdown', '2'], ['--countdown', '61'], ['--countdown', 'x'], ['--countdown'], ['--countdown=0']):
         with pytest.raises(ValueError, match='countdown'):
             auto.parse_own(bad)
@@ -84,7 +92,7 @@ def test_main_runs_pose_pick_with_questions_off_and_puts_everything_back(monkeyp
     monkeypatch.setattr(pp, 'main', fake_main)
     assert auto.main(['--config', 'c.yaml', '--camera-xyz', '0.0', '0.0', '0.3', '--countdown', '7']) == 0
     assert seen['argv'][1:] == ['--config', 'c.yaml', '--camera-xyz', '0.0', '0.0', '0.3', '--place-offset', '0', '0',
-                                '--no-inspect', '--no-step']
+                                '--place-layers', 'same', '--no-inspect', '--no-step']
     assert seen['mission'] is auto.AutoMission
     assert seen['input'] is not original_input
     assert builtins.input is original_input and pp.Mission is original_mission and sys.argv == original_argv   # restored
@@ -133,7 +141,7 @@ def mission(tmp_path, place=True):
     m.plan = pp.plan_pick(CONFIG, 0.40, 0.036)
     m.place = {'offset': (0.0, 0.07), 'xy': None, 'z': None, 'is_tcp': False, 'yaw': None} if place else None
     m.place_nudge, m.nudge = np.zeros(4), np.zeros(4)
-    m.blocked, m.given, m.failure = [], {'camera_xyz': [0.0, 0.0, 0.3]}, None
+    m.blocked, m.given, m.failure, m.grasp_widths = [], {'camera_xyz': [0.0, 0.0, 0.3]}, None, {}
     m.say = lambda text: None
     return m
 

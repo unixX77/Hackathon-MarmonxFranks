@@ -9,6 +9,9 @@ What is different here:
   * It asks nothing. The "Type GO" question is a countdown (default 5 s) in which Ctrl+C or the e-stop cancels, and
     the inspection stops, step mode and the correction prompts are always off. It refuses --step, --inspect and
     --place-inspect, and it answers no prompt at all: a question that still shows up stops the run before it moves.
+  * It trusts the gripper, not the pose: after the hand closes and again after the lift it reads the finger width the
+    gripper reports (the Franka Hand has no force sensor, its effort reads 0, but the width is exact) and stops when it
+    does not fit a held brick: nothing between the fingers, the wrong object, or a brick that slipped or fell.
   * Every safety check of pose_pick.py stays: the hand must start pointing down, bad poses and geometry are refused,
     each move is compared with where the hand really is (stop above 10 mm), and a downward move that ends short of
     its target (something is in the way) never closes the hand or releases the brick in the air.
@@ -18,8 +21,8 @@ What is different here:
     runs never dilute measure_grasp_offset.py.
 
 Use it exactly like pose_pick.py (same options), plus --countdown SECONDS (3 to 60, default 5). Where the brick goes:
-by default it is put back DOWN IN THE SAME POSE it was picked from (same x, y and angle, same height), so the whole run
-is "pick it up and set it down right there". Give --place, --place-offset, --place-camera-xyz or --pallet to put it
+by default it is put back DOWN IN THE SAME POSE it was picked from (same x, y and angle, and in the same layer: a brick
+taken from on top of another goes back on top of it), so the whole run is "pick it up and set it down right there". Give --place, --place-offset, --place-camera-xyz or --pallet to put it
 somewhere else instead:
 
   ros2 run fr3_pose_pick pose_pick_auto.py --config src/fr3_pose_pick/config/pose_pick.yaml \\
@@ -40,11 +43,15 @@ import pose_pick as pp
 AUTO_LOG = 'pose_pick_auto_log.json'
 FORBIDDEN = ('--step', '--inspect', '--place-inspect')      # each would bring a question back
 PLACE_OPTIONS = ('--place', '--place-offset', '--place-camera-xyz', '--pallet')   # any of these says where it goes
-SAME_POSE = ['--place-offset', '0', '0']                    # an offset of nothing = the pose it was picked from
+SAME_POSE = ['--place-offset', '0', '0', '--place-layers', 'same']   # the pose AND the layer it was picked from
 
 
 def place_given(args):
     return any(arg.split('=', 1)[0] in PLACE_OPTIONS for arg in args)
+
+
+class GraspNotConfirmed(RuntimeError):
+    """The gripper's finger width does not fit a held brick (missed, slipping or dropped)."""
 
 
 class AutoMission(pp.Mission):
@@ -53,6 +60,9 @@ class AutoMission(pp.Mission):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.failure = None
+
+    def grasp_alert(self, when, problem):
+        raise GraspNotConfirmed(f'Grasp not confirmed {when}: {problem}. The brick was not carried on.')
 
     def save_log(self):
         path = Path(self.c.get('auto_log', AUTO_LOG))
@@ -64,7 +74,8 @@ class AutoMission(pp.Mission):
                  'result': 'stopped' if self.failure else 'done', 'failure': self.failure,
                  'pose_given': self.given, 'grip_xyz': self.plan['grip'], 'yaw_deg': math.degrees(self.plan['yaw']),
                  'tcp_correction_used': list(self.c.get('tcp_correction_hand') or [0.0, 0.0]),
-                 'grasp_force': self.c.get('grasp_force'), 'blocked': self.blocked}
+                 'grasp_force': self.c.get('grasp_force'), 'blocked': self.blocked,
+                 'finger_width_mm': {k: round(v * 1000, 2) for k, v in self.grasp_widths.items()}}
         if self.place is not None:
             where = self.place_plan()
             entry['place_xyz'], entry['place_yaw_deg'] = where['release'], math.degrees(where['yaw'])
@@ -127,7 +138,8 @@ def parse_own(argv):
             raise ValueError(f'{arg.split("=", 1)[0]} brings a question back, and this script never asks: '
                              'use pose_pick.py for an interactive run')
     if not place_given(rest):
-        rest += SAME_POSE                                      # nothing said: put it back where it was picked
+        rest += SAME_POSE if not any(arg.split('=', 1)[0] == '--place-layers' for arg in rest) else SAME_POSE[:3]
+        # nothing said: put it back where it was picked, in the layer it was picked from
     return seconds, rest
 
 
