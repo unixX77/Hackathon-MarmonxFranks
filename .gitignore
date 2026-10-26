@@ -16,3 +16,6 @@ pose_pick_auto_log.json
 pose_pick_palletize.json
 pose_pick_palletize_bad.json
 *.bak
+
+# git worktrees of Claude Code sessions live here: never record them (a git add . once stored them as embedded repositories)
+.claude/worktrees/
