@@ -21,9 +21,12 @@ def main():
     p.add_argument('--frame',type=int,help='Default: latest saved frame')
     p.add_argument('--settings',type=Path,default=ROOT/'d435_settings.json')
     p.add_argument('--out',type=Path,default=ROOT/'data/pipeline_classifier_results')
-    p.add_argument('--brick-size-mm',type=float,nargs=3,default=[30,15,10])
+    p.add_argument('--brick-size-mm',type=float,nargs=3,default=[32,16,9.6])
     p.add_argument('--colour-model',default=str(ROOT/'classifier/colour_model.json'),
                    help="Learned colour model JSON, or 'none' for the fixed Lab prototypes")
+    p.add_argument('--second-opinion',action='store_true',
+                   help='Ask Claude (vision) to check the final colours; needs the anthropic package and an API key')
+    p.add_argument('--second-opinion-effort',default='medium',choices=['low','medium','high','xhigh','max'])
     p.add_argument('--detector-args',nargs=argparse.REMAINDER,default=[])
     a=p.parse_args()
     recording=a.recording.resolve() if a.recording else None
@@ -45,7 +48,7 @@ def main():
         if not frames:raise RuntimeError('No saved frame. Press Enter before closing capture.')
         frame=f'{a.frame if a.frame is not None else max(frames):06d}'
         run('perception/sam3_detection/top_layer_bricks.py',recording,'--frame',frame,
-            '--out',output/'00_normal_geometry','--brick-size-mm',*a.brick_size_mm,'--no-show',*a.detector_args)
+            '--out',output/'00_normal_geometry','--brick-size-mm',*a.brick_size_mm,'--no-show','--no-print-poses',*a.detector_args)
         geometry=output/'00_normal_geometry'/recording.name/frame
         run('pipeline_classifier/reclassify.py',geometry,'--out',output,
             *(['--colour-model',colour_model] if colour_model else []))
@@ -53,6 +56,22 @@ def main():
         (output/'pipeline.json').write_text(json.dumps({'recording':str(recording),'frame':frame,
             'original_result':str(geometry),'final_result':str(destination),
             'change':'standalone classification only; original detection and 3D geometry preserved'},indent=2))
+        sys.path.insert(0,str(ROOT/'perception/sam3_detection'))
+        from top_layer_bricks import pose_line
+        bricks_file=destination/'bricks.json'
+        if a.second_opinion:
+            sys.path.insert(0,str(ROOT/'classifier'))
+            from claude_second_opinion import review
+            try:
+                if review(destination,a.second_opinion_effort):bricks_file=destination/'bricks_second_opinion.json'
+            except Exception as error:  # the classifier result stands on its own
+                print(f'Second opinion skipped: {error}')
+        final=[b for b in json.loads(bricks_file.read_text())['bricks'] if b.get('id')]
+        print(f'\n{len(final)} bricks. x y z = top-face centre in camera_color_optical_frame (m); '
+              'angle = long side in the image from +x (right) toward +y (down), deg in (-90, 90]')
+        for brick in final:
+            opinion=brick.get('second_opinion',{})
+            print(pose_line(brick)+(f"  CHECK: Claude says {opinion['colour']}" if opinion.get('status')=='disagree' else ''))
         print('\nFinal results:',destination)
     except Exception as error:
         (output/'INCOMPLETE.json').write_text(json.dumps({'error':str(error)},indent=2))

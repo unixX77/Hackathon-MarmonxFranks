@@ -68,7 +68,7 @@ are physical box-body centers in camera optical coordinates (x right, y down,
 z forward), in metres. Top-face centers are also retained in camera_boxes.json.
 The pose exporter uses nominal brick dimensions 31.8 x 15.8 x 9.6 mm; these
 are the standalone module's defaults, independent of the other pipeline's
-30 x 15 x 10 mm prior. Pose/grasp metadata is not a robot motion command.
+32 x 16 x 9.6 mm prior. Pose/grasp metadata is not a robot motion command.
 
 ## Options
 

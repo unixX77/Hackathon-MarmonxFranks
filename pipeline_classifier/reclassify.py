@@ -79,7 +79,8 @@ def reclassify(geometry_folder, output_root, erosion=.12, min_pixels=80, max_dis
                             'overlay.png':overlay,'preview.png':preview},updated,final)
     # Geometry and instance masks must remain byte-for-byte/numerically identical.
     geometry_keys=['id','source_instance','status','height_m','centre_cam_m','box_centre_cam_m',
-                   'box_size_m','box_rotation_cam','box_corners_cam_m','yaw_deg_table','footprint_px']
+                   'box_size_m','box_rotation_cam','box_corners_cam_m','yaw_deg_table','angle_img_deg',
+                   'centre_source','footprint_px']
     originals={b['id']:b for b in original['bricks'] if b.get('id')}
     for b in final:
         assert all(b.get(k)==originals[b['id']].get(k) for k in geometry_keys), 'Geometry changed'

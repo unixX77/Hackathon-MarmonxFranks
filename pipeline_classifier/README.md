@@ -16,6 +16,20 @@ conda activate sam3
 Capture uses `d435_settings.json`: Enter saves, q finishes. The latest saved frame
 is processed. The detector and classifier save previews without opening windows.
 
+### Capture tips
+
+- Keep the camera at least 28-30 cm above the top layer; closer, depth drops out.
+- Use soft, diffuse light from the side (about 45 degrees), not a bare lamp next to
+  the camera: glare washes light bricks (medium nougat) out and is the main cause of
+  colour errors. Avoid mixing daylight and lamp light.
+- Keep some table visible around the stack: the classifier uses it as the white and
+  brightness reference.
+- The colour model was trained with colour auto exposure and auto white balance on.
+  Changing colour exposure, white balance, saturation, gamma, contrast or hue shifts
+  every colour; retrain (`classifier/colour_model.py`) after such a change. Settings
+  that do not affect colour and are safe to change: power-line frequency (50 Hz in
+  Europe), laser power (higher gives more complete depth).
+
 ## Existing recording
 
 ```bash
@@ -40,7 +54,10 @@ The final preview retains the normal pipeline's first five panels and replaces
 only panel 6. All final boxes have centre dots. XYZ, rotations, corners, instance
 IDs and instance masks are preserved; pose CSV colour/quality columns change.
 Coordinates remain camera-color optical coordinates, in metres. The default
-physical prior remains 30 x 15 x 10 mm, configurable with `--brick-size-mm`.
+physical prior is 32 x 16 x 9.6 mm, configurable with `--brick-size-mm`. At the end
+the run prints one grasp pose per brick, `#id colour quality x= y= z= angle=`
+(top-face centre in metres and long-side image angle in degrees; see
+[`perception/sam3_detection/README.md`](../perception/sam3_detection/README.md#grasp-pose-for-the-robot)).
 
 The original integrated classifier still executes in the unmodified geometry
 stage, but its final predictions are replaced by the standalone classifier. This
@@ -81,6 +98,28 @@ the `threshold` probability (default 0.7) are marked low confidence.
 Use `--colour-model none` for the fixed Lab prototypes, or pass
 `--colour-model classifier/colour_model.json` to `reclassify.py` to apply the
 model to an existing result.
+
+## Second opinion from Claude (optional)
+
+```bash
+pip install anthropic                 # once, in the sam3 environment
+export ANTHROPIC_API_KEY=...          # or: ant auth login
+./run_pipeline_classifier.sh --second-opinion
+python classifier/claude_second_opinion.py <run>/03_final/capture/<recording>/<frame>   # existing result
+```
+
+[`classifier/claude_second_opinion.py`](../classifier/claude_second_opinion.py) sends Claude
+(`claude-opus-5-5`, vision) an overview with every final brick numbered plus a close-up
+of each brick, without the classifier's labels, and asks for each brick's colour (or
+`unsure`), a confidence and flags (`glare`, `merged`, `partial`, `not_top_layer`,
+`not_a_brick`). Geometry and poses never change. If they agree, nothing changes; if
+Claude disagrees with medium or high confidence, the brick keeps the classifier's colour,
+its `colour_confidence` becomes `low`, and the printed pose line ends with
+`CHECK: Claude says <colour>`. Outputs in the final folder: `bricks_second_opinion.json`
+(`second_opinion` per brick), `second_opinion.png` (green agree, red disagree, grey
+unsure) and `second_opinion_raw.json`. One call per frame; if it fails, the classifier
+result is used unchanged. `--second-opinion-effort` (default `medium`) trades speed for
+care. Requests use the server-side refusal fallback (`fallbacks: "default"`).
 
 ## Run every capture and compare the pipelines
 

@@ -265,11 +265,11 @@ To fix the colours, recalibrate `PALETTE` on this camera. Take the reference col
 
 ## Top layer from depth, with the brick-size prior
 
-[`top_layer_bricks.py`](top_layer_bricks.py) finds the individual bricks of the top layer of a stack in RealSense RGB-D recordings, for picking. It uses the segmentation above and adds depth and a prior on the brick size (30 x 15 x 10 mm).
+[`top_layer_bricks.py`](top_layer_bricks.py) finds the individual bricks of the top layer of a stack in RealSense RGB-D recordings, for picking. It uses the segmentation above and adds depth and a prior on the brick size (32 x 16 x 9.6 mm, a LEGO 2x4 without studs).
 
 ![Top layer with fitted brick footprints](results_top_layer/20261024_102430/000017/preview.png)
 
-*Top left: camera RGB. Top right: all SAM 3 bricks, filled with their colour class. Bottom left: the top layer selected from depth. Bottom right: the bricks after the size prior, with the fitted 30 x 15 mm footprint of each brick in yellow.*
+*Top left: camera RGB. Top right: all SAM 3 bricks, filled with their colour class. Bottom left: the top layer selected from depth. Bottom right: the bricks after the size prior, with the fitted footprint of each brick in yellow.*
 
 ### How it works
 
@@ -277,15 +277,15 @@ To fix the colours, recalibrate `PALETTE` on this camera. Take the reference col
 2. Back-project the depth (aligned to colour) to 3D and fit the table plane with RANSAC to the depth around the bricks.
 3. Measure each brick's height above the table (80th percentile of its eroded mask) and keep the bricks within half a brick height of the highest one. This step is in [`top_layer_depth.py`](top_layer_depth.py), which can also be run on its own.
    - The top layer must be supported by `--top-min-support` masks (default 2), so a single noisy high mask cannot hide the real top layer.
-   - Exception: the last brick of a layer is alone. A single mask one brick height above the supported layer is still accepted when its depth shows one clean brick: at least 80% valid depth, at least 80% flat surface with at most 3 mm spread, and a 30 x 15 mm footprint measured from its top-surface depth points (not the mask, so visible side walls do not count). `--no-lone-top-brick` disables this.
+   - Exception: the last brick of a layer is alone. A single mask one brick height above the supported layer is still accepted when its depth shows one clean brick: at least 80% valid depth, at least 80% flat surface with at most 3 mm spread, and a 32 x 16 mm footprint measured from its top-surface depth points (not the mask, so visible side walls do not count). `--no-lone-top-brick` disables this.
 4. Project each kept mask onto the table plane at its height and measure it in millimetres:
-   - about 30 x 15 mm: one brick;
-   - about 15 mm wide and n x 30 mm long: n touching bricks merged into one mask, split into n bricks;
-   - about 15 mm wide but clearly shorter than 30 mm, or much narrower than 15 mm: a partly hidden brick or a sliver, rejected;
+   - about 32 x 16 mm: one brick;
+   - about 16 mm wide and n x 32 mm long: n touching bricks merged into one mask, split into n bricks;
+   - about 16 mm wide but clearly shorter than 32 mm, or much narrower than 16 mm: a partly hidden brick or a sliver, rejected;
    - anything else: kept and flagged `irregular`.
 
-   Width may reach `--max-width-factor` x 15 mm (default 1.5, i.e. 22.5 mm, halfway to two bricks wide). Masks wider than that are rejected before the depth step as multi-row assemblies. The margin is needed because a raised brick, or a brick on the edge of the stack, is seen with its side walls and measures about 20 mm wide.
-5. Fit a 30 x 15 mm footprint to each brick and report its centre in the camera frame, its yaw on the table and its layer.
+   Width may reach `--max-width-factor` x 16 mm (default 1.4, i.e. 22.4 mm). Masks wider than that are rejected before the depth step as assemblies. The margin is needed because a raised brick, or a brick on the edge of the stack, is seen with its side walls and measures about 20 mm wide; a mask that also covers part of a brick lying on top of it measures about 24 mm and must be rejected, or it can replace the real top brick.
+5. Fit a 32 x 16 mm footprint to each brick and report its grasp pose (below), its yaw on the table and its layer. The centre comes from the brick's top-face pixels (depth within a quarter brick height of its top) when that face is seen as a whole brick (at least 0.85 L x 0.75 W), so visible side walls do not shift it; otherwise from the mask. The angle always comes from the mask outline: on stack frames its error is about a third of an angle fitted to the top-face points.
 
 ### Run
 
@@ -295,7 +295,7 @@ The input is one extracted recording folder with `rgb/`, `depth/` (aligned to co
 python top_layer_bricks.py path/to/recording --frame 000020
 ```
 
-A window shows the preview; add `--no-show` to skip it. Without a display the preview is only saved. `--brick-size-mm L W H`, `--size-tol` (default 0.3, i.e. ±30%) and `--max-width-factor` (default 1.5) set the prior; `--top-min-support` and `--no-lone-top-brick` control the top-layer choice. `bricks.json` records `lone_top_brick_accepted` and, per depth instance, `top_footprint_mm`.
+A window shows the preview; add `--no-show` to skip it. Without a display the preview is only saved. `--brick-size-mm L W H`, `--size-tol` (default 0.3, i.e. ±30%) and `--max-width-factor` (default 1.4) set the prior; `--top-min-support` and `--no-lone-top-brick` control the top-layer choice. `bricks.json` records `lone_top_brick_accepted` and, per depth instance, `top_footprint_mm`. The pose line of every brick is printed at the end (`--no-print-poses` to skip).
 
 Output in `data/top_layer_bricks/<recording>/<frame>/`:
 
@@ -305,8 +305,28 @@ Output in `data/top_layer_bricks/<recording>/<frame>/`:
 | `final_semantic.png` | uint8 colour class per pixel |
 | `overlay.png` | top-layer bricks as coloured patches with white boundaries and the fitted footprints (yellow; magenta for `irregular`) |
 | `preview.png` | the four panels shown above |
-| `bricks.json` | per brick: status (`brick`, `split`, `partial`, `irregular`), colour, quality, measured size, height, layer, centre in the camera frame (m), yaw on the table, footprint in pixels, and the 3D box in the camera frame (centre, size, rotation, 8 corners) |
-| `poses.csv` | one row per brick: box centre `cx, cy, cz`, top-face centre, yaw, size, and the 8 box corners `c0`–`c7` (top face 0–3, bottom face 4–7), all in the camera frame in metres |
+| `bricks.json` | per brick: status (`brick`, `split`, `partial`, `irregular`), colour, quality, measured size, height, layer, top-face centre `centre_cam_m` (m), `angle_img_deg`, `centre_source` (`top_face_depth` or `mask`), `top_face_mm`, yaw on the table, footprint in pixels, and the 3D box in the camera frame (centre, size, rotation, 8 corners) |
+| `poses.csv` | one row per brick: box centre `cx, cy, cz`, top-face centre `top_cx, top_cy, top_cz`, `yaw_deg_table`, `angle_img_deg`, `centre_source`, size, and the 8 box corners `c0`–`c7` (top face 0–3, bottom face 4–7), all in the camera frame in metres |
+
+### Grasp pose for the robot
+
+Each brick is printed (and stored) as
+
+```text
+#3 reddish_brown bad x=0.108904 y=0.057324 z=0.263015 angle=-87.2
+```
+
+- `x y z` (`centre_cam_m`, `top_cx/cy/cz`): centre of the brick's **top face** in
+  `camera_color_optical_frame` (x right, y down, z forward out of the lens), metres.
+  Depth is aligned to colour and back-projected with the colour intrinsics.
+- `angle` (`angle_img_deg`): direction of the brick's long side in the image, in degrees,
+  from +x (right) toward +y (down), i.e. clockwise on screen, in (-90, 90]. Only the
+  line matters, so a vertical brick can read +90 or about -89.
+- Send these numbers unchanged; height bias corrections belong to the robot side.
+- `yaw_deg_table` and the rotation/quaternion of the 3D box use a different
+  convention (table-plane axes) and are not this angle.
+- Keep the camera at least ~28 cm above the top layer; closer, RealSense depth
+  becomes unreliable and bricks can lose their depth entirely.
 
 ### Results
 
@@ -338,7 +358,7 @@ reference recording** with `camera_info.json` and `recording_settings.json`:
 conda activate sam3
 python perception/sam3_detection/live_top_layer_bricks.py \
   data_collection/data/extracted/data4/20261024_095657 \
-  --brick-size-mm 30 15 10
+  --brick-size-mm 32 16 9.6
 ```
 
 Connect the camera with USB 3 and close RealSense Viewer/other camera programs.

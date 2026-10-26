@@ -2,7 +2,7 @@
 
 Same pipeline as top_layer_depth.py (SAM3 bricks, table plane from depth, highest
 layer kept), plus a prior on the brick size: every brick is L x W x H
-(default 30 x 15 x 10 mm). Each top-layer mask is measured in millimetres on the
+(default 32 x 16 x 9.6 mm). Each top-layer mask is measured in millimetres on the
 table plane and then
   - kept as one brick when it is about L x W,
   - split into n bricks when it is about W wide and n x L long (touching bricks
@@ -11,12 +11,17 @@ table plane and then
     (a brick mostly hidden by the layer above), or clearly narrower than W
     (a sliver, e.g. the side face of an edge brick),
   - rejected as irregular when it fits none of these.
-Width may reach --max-width-factor x W (default 1.5): an isolated raised brick's
+Width may reach --max-width-factor x W (default 1.4): an isolated raised brick's
 mask includes its side walls. The top layer is the highest height supported by
 --top-min-support masks; a lone mask one layer higher is still accepted when its
 depth shows one clean, flat L x W brick (--no-lone-top-brick disables this).
 Every brick gets a fitted L x W footprint: centre in the camera frame, yaw on the
-table and layer index, which is what a grasp planner needs.
+table and layer index, which is what a grasp planner needs. The grasp pose is
+centre_cam_m (top-face centre, camera_color_optical_frame, m) plus angle_img_deg
+(long side in the image, from +x right toward +y down, -90..90]). The centre
+comes from the brick's top-face depth pixels when that face is seen whole
+(centre_source 'top_face_depth'), otherwise from the mask ('mask'); the angle
+always comes from the mask outline, which is the more accurate of the two.
 
 Each final brick is then classified by colour (good / bad follows from the colour):
   - white balance from the table pixels found by the depth plane fit, in linear RGB,
@@ -51,6 +56,11 @@ from top_layer_depth import filter_top, point_cloud, semantic_overlay, table_pla
 LAB_WEIGHTS = np.array([0.45, 1.0, 1.0])     # lightness varies with exposure more than chroma
 OFFSET_LIMIT = np.array([60.0, 18.0, 18.0])  # max per-frame Lab offset (L, a, b)
 MIN_BRICKS_FOR_CHROMA_OFFSET = 5             # with fewer bricks only lightness is corrected
+# The top-face (depth) pose is used only when that face is seen as a whole brick;
+# complete faces measure about 29-31 x 13-15 mm for a 32 x 16 mm brick.
+TOP_FACE_MIN_PIXELS = 50
+TOP_FACE_MIN_LENGTH = 0.85                   # x brick length
+TOP_FACE_MIN_WIDTH = 0.75                    # x brick width
 
 
 def table_frame(normal):
@@ -110,8 +120,9 @@ def geometry_mask_filter(depth, calibration, args):
                 height = float(np.median(heights[valid]))
                 _, _, q = mask_on_plane(mask, K_inv, normal, offset, height, e1, e2)
                 _, (w, h), _ = cv2.minAreaRect(q.astype(np.float32))
-                # Long, one-brick-wide runs can still be split by the size prior. The limit is
-                # halfway to two bricks wide: a raised brick's mask includes its side walls.
+                # Long, one-brick-wide runs can still be split by the size prior. A raised or
+                # stack-edge brick's mask includes its side walls (~20 mm for 16 mm); a mask that
+                # also covers part of a brick lying on it is wider (~24 mm) and is rejected.
                 if min(w, h) > args.brick_size_mm[1] * args.max_width_factor:
                     reason = 'too wide: assembly or multi-row mask'
             if reason:
@@ -123,8 +134,36 @@ def geometry_mask_filter(depth, calibration, args):
     return select
 
 
-def apply_size_prior(instance, kept_records, sam_records, calibration, report, args):
-    """Measure, split and fit every kept top-layer mask; return the brick id image and brick records."""
+def top_face_fit(q, axis):
+    """Robust centre (2-98% mid-range) and extent of top-face points (mm) along the brick's long
+    axis and across it. The axis comes from the whole mask: on a stack grid its angle error is
+    a third of a PCA axis fitted to the top face, whose depth holes skew the point set."""
+    perp = np.array([-axis[1], axis[0]])
+    ranges = [np.percentile(q @ a, [2, 98]) for a in (axis, perp)]
+    return axis * ranges[0].mean() + perp * ranges[1].mean(), [float(np.ptp(r)) for r in ranges]
+
+
+def image_angle(footprint_px):
+    """Angle of the footprint's long edge in the image: from +x (right) toward +y (down), in (-90, 90]."""
+    dx, dy = np.subtract(footprint_px[0], footprint_px[1])
+    angle = np.degrees(np.arctan2(dy, dx))
+    return float(angle - 180 if angle > 90 else angle + 180 if angle <= -90 else angle)
+
+
+def pose_line(brick):
+    """Camera-frame grasp pose: top-face centre (m) and long-side image angle (deg)."""
+    x, y, z = brick['centre_cam_m']
+    return (f"#{brick['id']} {brick.get('colour', '')} {brick.get('quality', '')} "
+            f"x={x:.6f} y={y:.6f} z={z:.6f} angle={brick['angle_img_deg']:.1f}")
+
+
+def apply_size_prior(instance, kept_records, sam_records, calibration, report, args, height=None):
+    """Measure, split and fit every kept top-layer mask; return the brick id image and brick records.
+
+    With `height` (m above the table per pixel, NaN without depth) each brick's centre comes from
+    its top-face pixels only, so visible side walls do not shift it; the long axis always comes
+    from the mask. The mask centre is kept when the top face is not seen as a whole brick
+    (missing depth, occlusion)."""
     L, W, H = args.brick_size_mm
     tol = args.size_tol
     K = np.array(calibration['aligned_depth_intrinsics']['K'], np.float64)
@@ -171,6 +210,15 @@ def apply_size_prior(instance, kept_records, sam_records, calibration, report, a
             ident = len([b for b in bricks if b['id']]) + 1
             bricks_img[v[sel], u[sel]] = ident
             centre_q = np.array([cx, cy]) + axis * (-length / 2 + (k + 0.5) * length / n)
+            source, top_face = 'mask', None
+            if height is not None and status != 'irregular':
+                # Top surface = within a quarter brick height of the measured top (studs included).
+                on_top = np.abs(np.nan_to_num(height[v[sel], u[sel]], nan=-1.0) - h) <= H / 4000
+                if on_top.sum() >= TOP_FACE_MIN_PIXELS:
+                    top_centre, top_face = top_face_fit(q[sel][on_top], axis)
+                    if (TOP_FACE_MIN_LENGTH * L <= top_face[0] <= (1 + tol) * L
+                            and TOP_FACE_MIN_WIDTH * W <= top_face[1] <= args.max_width_factor * W):
+                        centre_q, source = top_centre, 'top_face_depth'
             # fitted footprint: L x W for bricks, the measured rectangle for irregular masks
             fl, fw = (L, W) if status != 'irregular' else (length, width)
             corners = [centre_q + sx * axis * fl / 2 + sy * np.array([-axis[1], axis[0]]) * fw / 2
@@ -181,15 +229,19 @@ def apply_size_prior(instance, kept_records, sam_records, calibration, report, a
             bottom_corners = to_camera(corners, normal, offset, bottom, e1, e2)
             long_cam = axis[0] * e1 + axis[1] * e2
             rotation = np.stack([long_cam, np.cross(normal, long_cam), normal], 1)  # columns: long, short, up
+            footprint_px = np.round(to_pixels(corners, K, normal, offset, h, e1, e2), 1).tolist()
             bricks.append({**base, 'id': ident,
-                           'centre_cam_m': np.round(to_camera(centre_q, normal, offset, h, e1, e2)[0], 4).tolist(),
+                           'centre_cam_m': np.round(to_camera(centre_q, normal, offset, h, e1, e2)[0], 6).tolist(),
                            'box_centre_cam_m': np.round(
                                to_camera(centre_q, normal, offset, (h + bottom) / 2, e1, e2)[0], 4).tolist(),
                            'box_size_m': [round(fl / 1000, 4), round(fw / 1000, 4), round(H / 1000, 4)],
                            'box_rotation_cam': np.round(rotation, 4).tolist(),
                            'box_corners_cam_m': np.round(np.vstack([top_corners, bottom_corners]), 4).tolist(),
                            'yaw_deg_table': round(float(long_deg) % 180, 1),
-                           'footprint_px': np.round(to_pixels(corners, K, normal, offset, h, e1, e2), 1).tolist()})
+                           'angle_img_deg': round(image_angle(footprint_px), 1),
+                           'centre_source': source,
+                           'top_face_mm': [round(s, 1) for s in top_face] if top_face else None,
+                           'footprint_px': footprint_px})
     return bricks_img, bricks
 
 
@@ -197,13 +249,13 @@ def write_poses_csv(path, bricks):
     """One row per brick: box centre, top-face centre, yaw and the 8 box corners, in the camera frame (m).
     Corners 0-3 are the top face, 4-7 the bottom face below them, in the same order."""
     header = ['id', 'status', 'colour', 'quality', 'cx', 'cy', 'cz', 'top_cx', 'top_cy', 'top_cz',
-              'yaw_deg_table', 'length_m', 'width_m', 'height_m']
+              'yaw_deg_table', 'angle_img_deg', 'centre_source', 'length_m', 'width_m', 'height_m']
     header += [f'c{i}_{a}' for i in range(8) for a in 'xyz']
     rows = []
     for b in bricks:
         rows.append([b['id'], b['status'], b.get('colour', ''), b.get('quality', ''),
-                     *b['box_centre_cam_m'], *b['centre_cam_m'], b['yaw_deg_table'], *b['box_size_m'],
-                     *np.ravel(b['box_corners_cam_m'])])
+                     *b['box_centre_cam_m'], *b['centre_cam_m'], b['yaw_deg_table'], b['angle_img_deg'],
+                     b['centre_source'], *b['box_size_m'], *np.ravel(b['box_corners_cam_m'])])
     path.write_text('\n'.join(','.join(str(v) for v in row) for row in [header] + rows) + '\n')
 
 
@@ -329,9 +381,9 @@ def process_frame(bgr, depth, calibration, model, processor, args, device, dtype
 
     keep, report = filter_top(instance, depth, calibration, args)
     kept = [r for r in report['instances'] if r['kept']]
-    bricks_img, bricks = apply_size_prior(instance, kept, sam_records, calibration, report, args)
-
     height, table = height_and_table(depth, calibration, report, instance, args)
+    bricks_img, bricks = apply_size_prior(instance, kept, sam_records, calibration, report, args, height)
+
     colour_info = classify_bricks(bgr, bricks_img, bricks, table, args)
     final = [b for b in bricks if b['id']]
 
@@ -388,15 +440,17 @@ def build_parser():
     p.add_argument('--frame', default='000000')
     p.add_argument('--out', type=Path, default=Path('data/top_layer_bricks'))
     p.add_argument('--no-show', action='store_true')
-    p.add_argument('--brick-size-mm', nargs=3, type=float, default=[30, 15, 10], metavar=('L', 'W', 'H'),
+    p.add_argument('--print-poses', action=argparse.BooleanOptionalAction, default=True,
+                   help='print "#id colour quality x= y= z= angle=" per brick')
+    p.add_argument('--brick-size-mm', nargs=3, type=float, default=[32, 16, 9.6], metavar=('L', 'W', 'H'),
                    help='brick length, width, height (H is also the layer height)')
     p.add_argument('--top-min-support', type=int, default=2, choices=range(1, 100),
                    help='minimum masks supporting the top layer; use 1 for a single top brick')
     p.add_argument('--lone-top-brick', action=argparse.BooleanOptionalAction, default=True,
                    help='accept a single clean brick one layer above the supported top (last brick of a layer)')
     p.add_argument('--size-tol', type=float, default=0.3, help='relative tolerance on length and width')
-    p.add_argument('--max-width-factor', type=float, default=1.5,
-                   help='masks wider than this x brick width are multi-row assemblies')
+    p.add_argument('--max-width-factor', type=float, default=1.4,
+                   help='masks wider than this x brick width are assemblies (raised bricks measure up to ~1.26)')
     p.add_argument('--table-roi', nargs=4, type=int, metavar=('X', 'Y', 'W', 'H'))
     p.add_argument('--plane-threshold-mm', type=float, default=3)
     p.add_argument('--erode', type=int, default=2, help='3x3 erosion iterations')
@@ -449,6 +503,9 @@ def main():
     save_result(output, images, metadata, final)
     preview = images['preview.png']
     print(f'{len(final)} bricks -> {output}')
+    if args.print_poses:
+        for brick in final:
+            print(pose_line(brick))
 
     if not args.no_show and not (os.environ.get('DISPLAY') or os.environ.get('WAYLAND_DISPLAY')):
         print(f'No display; open {output / "preview.png"} instead (use --no-show to skip this check)')

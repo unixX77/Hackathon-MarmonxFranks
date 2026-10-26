@@ -131,6 +131,12 @@ Without `--colour-model` the fixed prototypes below are used, unchanged.
 `run_pipeline_classifier.sh` uses the model by default (see
 [`pipeline_classifier/README.md`](../pipeline_classifier/README.md)).
 
+Optional second opinion: [`claude_second_opinion.py`](claude_second_opinion.py) asks
+Claude (vision, needs the `anthropic` package and an API key) for each final brick's
+colour without showing it the classifier's answer. Disagreements lower the brick's
+colour confidence; colours and geometry are never overwritten. See
+[`pipeline_classifier/README.md`](../pipeline_classifier/README.md#second-opinion-from-claude-optional).
+
 Known weaknesses: strong glare washes light bricks (especially medium nougat)
 out to grey-white and they can be misclassified; the dataset has no nougat
 samples under strong glare. Diffuse lighting or a lower fixed exposure helps
