@@ -9,9 +9,13 @@ A move that cannot be done as a clean straight line is refused instead of improv
 The pure helpers (tool_down_quaternion, nearest_yaw, retime) need no ROS and are unit tested.
 """
 import math
+import sys
 import time
+from pathlib import Path
 
 import numpy as np
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 # FR3 joint speed limits (rad/s). Moves run at a small fraction of these.
 VMAX = np.array([2.62, 2.62, 2.62, 2.62, 5.26, 4.18, 5.26])
@@ -239,23 +243,53 @@ class Mover:
         if target_yaw != first:
             self.node.get_logger().info(f'{label}: the nearest hand yaw was refused or leaves the wrist near its '
                                         f'stop: using the equivalent yaw {math.degrees(target_yaw):.0f} deg instead')
-        points = trajectory.joint_trajectory.points
-        times, velocities = retime(q, self.scale)
         trajectory.multi_dof_joint_trajectory.points = []
-        for point, t, v in zip(points, times, velocities):
-            point.time_from_start.sec = int(t)
-            point.time_from_start.nanosec = int((t % 1.0) * 1e9)
-            point.velocities = [float(x) for x in v]
-            point.accelerations = []
+        smooth = None
+        if self.c.get('smooth_motion', True):
+            from trajectory_smoothing import smooth_trajectory
+            smooth = smooth_trajectory(q, self.scale, RAMP_SECONDS)
+            if smooth['info']['mode'] != 'smooth' and not smooth['info'].get('trivial'):
+                self.node.get_logger().warn(f'{label}: not smoothed ({smooth["info"]["reason"]}); sending the planner\'s '
+                                            'own points with the old timing')
+        if smooth is not None and smooth['info']['mode'] == 'smooth':
+            trajectory.joint_trajectory.points = self.points_from(smooth)
+            times, info = smooth['t'], smooth['info']
+            style = (f'smooth, constant {info["speed_m_s"] * 1000:.0f} mm/s, on the line within '
+                     f'{info["line_error_m"] * 1000:.2f} mm')
+        else:
+            points = trajectory.joint_trajectory.points
+            times, velocities = retime(q, self.scale)
+            for point, t, v in zip(points, times, velocities):
+                point.time_from_start.sec = int(t)
+                point.time_from_start.nanosec = int((t % 1.0) * 1e9)
+                point.velocities = [float(x) for x in v]
+                point.accelerations = []
+            style = 'planner points, trapezoid timing'
         distance = float(np.linalg.norm(np.array(xyz) - current[:3, 3]))
         summary = (f'{distance * 100:.0f} cm straight line to x={xyz[0]:.3f} y={xyz[1]:.3f} z={xyz[2]:.3f}, '
                    f'hand yaw {math.degrees(now_yaw):.0f} -> {math.degrees(target_yaw):.0f} deg, '
                    f'biggest joint turn {swing.max():.2f} rad, wrist reaches {wrist_excursion(q):.2f} rad, '
-                   f'about {times[-1]:.0f} s at {self.scale * 100:.0f} % speed')
+                   f'about {times[-1]:.0f} s at {self.scale * 100:.0f} % speed ({style})')
         self.node.get_logger().info(f'{label}: {summary}')
         self.ask_step(label, 'Planned, not moving yet: ' + summary)
         self.execute(label, trajectory)
         return commanded                    # the point that was actually commanded (target + tcp_correction_hand)
+
+    @staticmethod
+    def points_from(smooth):
+        """JointTrajectoryPoints (positions, velocities, accelerations, time) from trajectory_smoothing's result."""
+        from trajectory_msgs.msg import JointTrajectoryPoint
+        points = []
+        for k, t in enumerate(smooth['t']):
+            point = JointTrajectoryPoint()
+            point.positions = [float(x) for x in smooth['q'][k]]
+            point.velocities = [float(x) for x in smooth['v'][k]]
+            point.accelerations = [float(x) for x in smooth['a'][k]]
+            whole = int(t)
+            point.time_from_start.sec = whole
+            point.time_from_start.nanosec = min(int(round((t - whole) * 1e9)), 999999999)
+            points.append(point)
+        return points
 
     def execute(self, label, trajectory):
         from action_msgs.msg import GoalStatus

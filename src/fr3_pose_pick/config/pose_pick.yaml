@@ -63,6 +63,11 @@ min_open_clearance: 0.001       # smallest open_width - brick short side the con
 tcp_correction_hand: [-0.0100, 0.0030]
 grasp_force: 10.0
 gripper_speed: 0.02
+# Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the
+# hand stays on the line), which made the arm jerk. true = keep the hand on exactly the same line but remove the wobble and
+# move at one constant speed with smooth starts and stops (checked before every move; if the check fails the old timing
+# is sent and a warning is printed). false = the old behaviour.
+smooth_motion: true
 velocity_scale: 0.05
 acceleration_scale: 0.05
 sim_speed_scale: 0.1            # fake hardware only

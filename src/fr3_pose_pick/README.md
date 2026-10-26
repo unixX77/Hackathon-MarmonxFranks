@@ -231,6 +231,32 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
   as good as that.
 
+## Smooth, straight-line motion (no jerks)
+
+Every move is a straight Cartesian line (MoveIt's `compute_cartesian_path`): the hand stays within 0.01 to 0.05 mm of
+the line. The jerks came from somewhere else: the planner's inverse kinematics lets the 7-axis arm's elbow wander by
+several milliradians from point to point (up to 15 mrad, and 2 to 3 joints reversing direction in the middle of a move)
+while the hand stays on the line, and the velocities worked out from that noise made the arm jerk and the hand speed
+vary by about +-25 %.
+
+`smooth_motion: true` (default, `config/pose_pick.yaml`) fixes this in `trajectory_smoothing.py`:
+1. the hand stays on exactly the planned poses; only the wobble of the elbow is removed (the poses are re-imposed with
+   the arm's own kinematics, which match MoveIt's to the sixth decimal);
+2. a quintic spline through them (continuous velocity and acceleration);
+3. ONE constant hand speed, the fastest that keeps every joint under `velocity_scale` times its limit at the worst point
+   of the move, with smooth quintic ramps: speed and acceleration are zero at the start and the end, the jerk is finite;
+4. positions, velocities and accelerations every 50 ms, so the controller follows a quintic spline.
+
+Measured on the real MoveIt plans of seven typical moves (0.05 speed): peak jerk 49 to 461 rad/s3 before, 0.3 to 2.0
+after; peak acceleration 0.16 to 0.86 before, 0.16 to 0.28 after; the long hover at a constant 37 mm/s (before
+53 +- 13 mm/s); the hand 0.01 mm off the line. The long 40 cm hover takes about 12 s instead of 9 s, because it now moves
+at one steady speed set by the worst point of the path; short moves take the same time. Faster: raise `velocity_scale`.
+
+Every move is checked before it is sent: the smoothed path must stay within 0.5 mm of the planned line and 0.6 mrad of the
+planned orientation (checked between the planned points too), inside the planned range of joint angles, and under the speed
+limit. If any check fails, the planner's own points are sent with the old timing and a warning is printed. The step
+prompt shows `(smooth, constant N mm/s, on the line within X mm)` for a smoothed move. `smooth_motion: false` switches back.
+
 ## Safety: one robot stack per ROS domain
 
 A simulation and the real robot must never run in the same ROS domain (a command can reach either).
