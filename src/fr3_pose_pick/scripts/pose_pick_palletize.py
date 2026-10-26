@@ -5,9 +5,14 @@ Same machinery as pose_pick_auto.py (no questions, no corrections, a countdown i
 on any failure, the gripper's finger width confirms every grasp). Each brick is labelled with a capital letter:
 
   G = good brick   ->  the GOOD row, 40 cm to the robot's left of the stack (palletize_start_offset 0 0.40)
-  B = bad brick    ->  the BAD row, the same 40 cm to the left and 10 cm closer to the robot (palletize_bad_start_offset -0.10 0.40)
+  B = bad brick    ->  the BIN: the pose you recorded with record_pose.py bin (palletize_bad_mode: bin). The robot carries the brick
+                       there, lets go, and goes on with the next brick. (palletize_bad_mode: row makes a second row instead, the same
+                       40 cm to the left and 10 cm closer to the robot, palletize_bad_start_offset -0.10 0.40.)
 
-and goes NEXT TO the one before in its row, along +y, with --gap between them (default 16 mm, so the centres are one brick width
+  Record the bin once: move the arm where the bad bricks should be dropped (hand pointing down), hold it still, and
+    ros2 run fr3_pose_pick record_pose.py bin --config src/fr3_pose_pick/config/pose_pick.yaml
+
+and a good brick goes NEXT TO the one before in its row, along +y, with --gap between them (default 16 mm, so the centres are one brick width
 plus the gap = 32 mm apart), at the angle of the first. Both rows are measured from the first brick that was ever picked, so they
 line up whichever label comes first. Each row is remembered in a state file (pose_pick_palletize.json for G,
 pose_pick_palletize_bad.json for B), so every run, or every --brick, takes the next slot of its row.
@@ -52,8 +57,11 @@ import sys
 import time
 from pathlib import Path
 
+import numpy as np
+
 import pose_pick as pp
 import pose_pick_auto as auto
+import record_pose as rp
 
 STATE_FILE = 'pose_pick_palletize.json'
 DEFAULT_START_OFFSET = (0.0, 0.08)           # used only when the config has no palletize_start_offset
@@ -147,6 +155,13 @@ def check_mode(c):
     return float(height)
 
 
+def check_bad_mode(c):
+    mode = c.get('palletize_bad_mode', 'bin')
+    if mode not in ('bin', 'row'):
+        raise ValueError("palletize_bad_mode must be 'bin' (drop the bad bricks at the recorded bin pose) or 'row' (a second row)")
+    return mode
+
+
 def status_lines(state, c=None):
     path_note = f'gap {state["gap"] * 1000:.0f} mm, centres {state["pitch"] * 1000:.0f} mm apart, long side at {state["row_yaw_deg"]:.1f} deg'
     if state.get('anchored'):
@@ -177,6 +192,7 @@ class PalletizeMission(auto.AutoMission):
     anchor = False                                       # this brick is the anchor: it only defines the row
     wide = False                                         # press mode: search the studs in rings around the aim
     rings = None                                         # how many rings (None: the whole cell, for the first brick)
+    bin_pose = None                                      # a bad brick: the recorded pose to drop it at (a poses.yaml record)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -187,7 +203,35 @@ class PalletizeMission(auto.AutoMission):
         self.drop_fine = bool(self.c.get('palletize_drop_fine', False))
         self.search_wide = cls.wide
         self.search_rings = cls.rings
-        self.on_placed = self.record_slot
+        self.on_placed = self.record_slot if cls.bin_pose is None else None      # a brick in the bin takes no slot
+
+    def place_brick(self):
+        pose = type(self).bin_pose
+        if pose is None:
+            return super().place_brick()
+        self.drop_in_bin(pose)
+
+    def drop_in_bin(self, pose):
+        """Carry the brick to the recorded bin pose (hand x, y, z and angle), let go, and back off. The hand ends at the pose that was
+        recorded, so the point Mover.move is given is that pose less the centring offset it adds."""
+        x, y, z = (float(v) for v in pose['xyz'])
+        yaw = math.radians(float(pose.get('yaw_deg', 0.0)))
+        offset = self.centring_offset(yaw)
+        cx, cy = x - float(offset[0]), y - float(offset[1])
+        above = max(z + float(self.c.get('bin_clearance', 0.0)), self.plan['above'][2])
+        self.place_trace['bin'] = {'xyz': [x, y, z], 'yaw_deg': float(pose.get('yaw_deg', 0.0))}
+        from_above = above > z + 0.002
+        if from_above:
+            self.go('Carry the brick above the bin', [cx, cy, above], yaw)
+            self.go('Lower the brick to the bin pose', [cx, cy, z], yaw)
+        else:
+            self.go('Carry the brick to the bin pose', [cx, cy, z], yaw)
+        self.release_hand = np.array(self.mover.hand_pose()[:3, 3], dtype=float)
+        self.mover.hand()                       # open: the bad brick drops
+        self.mover.detach_block()
+        self.say(f'Bad brick dropped at the bin pose x={self.release_hand[0]:.4f} y={self.release_hand[1]:.4f} z={self.release_hand[2]:.4f}')
+        if from_above:
+            self.go('Back off from the bin', [cx, cy, above], yaw)
 
     def record_slot(self):
         cls = type(self)
@@ -344,6 +388,8 @@ def main(argv=None):
             shift_label = args.label or 'G'
             states = {label: load_state(path) for label, path in paths.items()}
             if args.shift:
+                if shift_label == 'B' and c is not None and check_bad_mode(c) == 'bin':
+                    raise ValueError('The bad bricks go to the bin pose, not a row: record the bin again with record_pose.py bin')
                 state = states[shift_label]
                 if state is None or state['origin'] is None:
                     raise ValueError(f'--shift moves a row that has a first brick; the {LABELS[shift_label]} row has none yet')
@@ -352,9 +398,17 @@ def main(argv=None):
                 state['origin'] = [state['origin'][0] + args.shift[0], state['origin'][1] + args.shift[1]]
                 save_state(paths[shift_label], state)
                 print(f'The {LABELS[shift_label]} row moved by dx={args.shift[0] * 1000:+.1f} mm dy={args.shift[1] * 1000:+.1f} mm.')
-            if states['G'] is None and states['B'] is None:
+            bin_mode = c is not None and check_bad_mode(c) == 'bin'
+            if states['G'] is None and (states['B'] is None or bin_mode):
                 print('Row: nothing placed yet (no state file).')
+            if bin_mode:
+                record = rp.load_poses(rp.poses_path(args.config)).get('bin')
+                print('--- B: BAD bricks go to the BIN pose: ' + (
+                    f'x={record["xyz"][0]:.4f} y={record["xyz"][1]:.4f} z={record["xyz"][2]:.4f} yaw {record.get("yaw_deg", 0):.1f} deg '
+                    f'(recorded {record.get("recorded", "?")})' if record else 'none recorded yet: run record_pose.py bin'))
             for label in ('G', 'B'):
+                if label == 'B' and bin_mode:
+                    continue
                 if states[label] is not None:
                     print(f'--- {label}: {LABELS[label].upper()} bricks')
                     print('\n'.join(status_lines(states[label], c)))
@@ -384,8 +438,20 @@ def main(argv=None):
             jobs = [(['--camera-xyz', fmt(x), fmt(y), fmt(z), '--camera-angle', fmt(a)], label) for x, y, z, a, label in bricks]
         else:
             jobs = [([], args.label or 'G')]
+        bad_mode = check_bad_mode(c)
+        bin_pose = None
+        if bad_mode == 'bin' and any(label == 'B' for _, label in jobs):
+            poses = rp.load_poses(rp.poses_path(args.config))
+            if 'bin' not in poses:
+                raise ValueError('A bad brick goes to the bin pose and none is recorded. Move the arm where the bad bricks should be dropped '
+                                 '(hand pointing down), hold it still and run:  ros2 run fr3_pose_pick record_pose.py bin --config '
+                                 f'{args.config}')
+            rp.check_bin_pose(c, poses['bin'])
+            bin_pose = poses['bin']
         states, notes = {}, []
         for label in sorted({label for _, label in jobs}):
+            if label == 'B' and bad_mode == 'bin':
+                continue                                       # no row for the bin
             states[label] = prepare_row(label, args, c, paths[label], anchoring=bool(args.anchor) and label == 'G')
             notes += [n for n in check_row(c, states[label]) if n not in notes]
     except (ValueError, OSError) as problem:
@@ -410,6 +476,24 @@ def main(argv=None):
     done = 0
     try:
         for number, (pick, label) in enumerate(jobs, 1):
+            if label == 'B' and bad_mode == 'bin':
+                print(f'\n=== Brick {number} of {len(jobs)} [B = BAD]: into the BIN at x={bin_pose["xyz"][0]:.4f} y={bin_pose["xyz"][1]:.4f} '
+                      f'z={bin_pose["xyz"][2]:.4f} (recorded {bin_pose.get("recorded", "?")}) ===', flush=True)
+                if number == 1 and notes:
+                    print('\n'.join(notes), flush=True)
+                PalletizeMission.state = PalletizeMission.state_path = PalletizeMission.truth = None
+                PalletizeMission.seat_z = PalletizeMission.ref = None
+                PalletizeMission.index, PalletizeMission.label, PalletizeMission.anchor, PalletizeMission.drop = 0, 'B', False, None
+                PalletizeMission.wide, PalletizeMission.rings, PalletizeMission.bin_pose = False, None, bin_pose
+                builtins.input = auto.countdown_input(seconds if number == 1 else 0)
+                # a nominal place next to the pick: the mission only needs a place to exist; it is carried to the bin instead
+                sys.argv = [old_argv[0]] + base + pick + ['--place-offset', '0', '0', '--no-inspect', '--no-step']
+                code = pp.main()
+                if code:
+                    return code
+                done += 1
+                continue
+            PalletizeMission.bin_pose = None
             path = paths[label]
             state = load_state(path) or states[label]          # the mission saved the row after the last release
             other = load_state(paths['B' if label == 'G' else 'G'])

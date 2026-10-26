@@ -1,0 +1,9 @@
+# Poses recorded with record_pose.py (hand = fr3_hand_tcp in fr3_link0, metres and degrees). Do not edit by hand
+# unless you know what you are doing: record the pose again instead.
+bin:
+  xyz: [0.35189, -0.10578, 0.18307]
+  quat_xyzw: [-0.99998, -0.00193, 0.00615, 1.0e-05]
+  yaw_deg: 0.221
+  tilt_deg: 0.705
+  spread_mm: 0.0
+  recorded: '2026-10-26 18:27:32'

@@ -154,9 +154,12 @@ place_search_tries: 4           # at most this many shifted tries (up to 8) befo
 # frame, +y = to the robot's left). Set 2026-10-26 on request: 40 cm in +y. Only a NEW row reads this: a started row keeps its own
 # (--reset starts again). --start-offset DX DY overrides it for one row. Not used with --anchor.
 palletize_start_offset: [0.0, 0.40]
-# The BAD row (label B), from the same first pick: 10 cm closer to the robot (x -0.10) and the same 40 cm to the left. Good and bad bricks
-# are given as  --brick X Y Z A G  /  --brick X Y Z A B  (capital letters; G = good, B = bad).
+# Bad bricks (label B; good ones are G: --brick X Y Z A G / --brick X Y Z A B, capital letters). 'bin' (set 2026-10-26 on request): the
+# robot carries a bad brick to the pose recorded with record_pose.py bin (config/poses.yaml), lets go there and goes on with the next
+# brick. 'row': a second row from the same first pick, 10 cm closer to the robot (palletize_bad_start_offset) and 40 cm to the left.
+palletize_bad_mode: bin
 palletize_bad_start_offset: [-0.10, 0.40]
+bin_clearance: 0.0              # m: come to the bin pose from this far above it (0 = straight to it from the carry height, if it is higher)
 # How the palletizer puts a brick down (pose_pick_palletize.py). 'drop' (set 2026-10-26 on request, the stud-seating place was not
 # reliable): go over the slot, come down to the 4 cm stop and nudge x, y by the measured hand position, go straight down to
 # palletize_drop_height above the seat, let go and move on; nothing is pressed or searched. 'press' seats the brick on the studs

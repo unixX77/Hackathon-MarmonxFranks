@@ -88,7 +88,7 @@ class Capture:
     def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4, release_yaw=1.7):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
         self.anchors, self.seat_zs, self.grasp_yaw, self.release_yaw, self.wides = [], [], grasp_yaw, release_yaw, []
-        self.rings, self.drops, self.labels, self.refs = [], [], [], []
+        self.rings, self.drops, self.labels, self.refs, self.bins = [], [], [], [], []
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -103,6 +103,9 @@ class Capture:
         self.drops.append(cls.drop)
         self.labels.append(cls.label)
         self.refs.append(cls.ref)
+        self.bins.append(cls.bin_pose)
+        if cls.bin_pose is not None:                                           # a brick for the bin takes no slot
+            return 0
         mission.release_yaw_deg = self.release_yaw
         mission.grasp_pick = np.array([0.4263, -0.0056, 0.0002])           # the hand's measured pose at the grasp
         mission.grasp_hand_yaw_deg = self.grasp_yaw
@@ -115,15 +118,19 @@ class Capture:
 
 @pytest.fixture
 def run(monkeypatch, tmp_path):
-    def go(argv, capture=None, mode=None):
+    def go(argv, capture=None, mode=None, bad='row', poses=None):
         capture = capture or Capture()
         monkeypatch.setattr(pp, 'main', capture)
         monkeypatch.setattr(auto, 'countdown_input', lambda seconds: capture.countdowns.append(seconds) or builtins.input)
         path = str(tmp_path / 'row.json')
-        config = CONFIG_PATH
-        if mode is not None:                                                   # 'press': the stud-seating place of the earlier version
-            config = tmp_path / f'{mode}.yaml'
-            config.write_text(yaml.safe_dump(dict(CONFIG, palletize_place_mode=mode)))
+        # always a copy of the config in a temporary folder, with its own poses.yaml: the real recorded bin must never leak into a test
+        folder = tmp_path / 'cfg'
+        folder.mkdir(exist_ok=True)
+        config = folder / 'pose_pick.yaml'
+        config.write_text(yaml.safe_dump(dict(CONFIG, palletize_place_mode=mode or CONFIG['palletize_place_mode'],
+                                              palletize_bad_mode=bad)))      # mode 'press': the stud-seating place of the earlier version
+        if poses is not None:
+            (folder / 'poses.yaml').write_text(yaml.safe_dump(poses))
         code = pal.main(['--config', str(config), '--state', path] + argv)
         return code, capture
     return go
@@ -530,3 +537,97 @@ def test_the_shift_moves_the_row_of_the_label(run, tmp_path):
     run(['--shift', '0.002', '0', '--label', 'B'])
     assert pal.load_state(tmp_path / 'row.json')['origin'] == good
     assert pal.load_state(tmp_path / 'row_bad.json')['origin'] == pytest.approx([bad[0] + 0.002, bad[1]])
+
+
+# ------------------------------------------------------------------------------------------- bad bricks into the bin
+BIN = {'bin': {'xyz': [0.35189, -0.10578, 0.18307], 'quat_xyzw': [-0.99998, -0.00193, 0.00615, 0.00001], 'yaw_deg': 0.221,
+               'tilt_deg': 0.705, 'spread_mm': 0.0, 'recorded': '2026-10-26 18:27:32'}}
+
+
+def test_the_shipped_config_sends_bad_bricks_to_the_bin():
+    assert CONFIG['palletize_bad_mode'] == 'bin'
+    recorded = pal.rp.load_poses(pal.rp.poses_path(CONFIG_PATH))
+    assert recorded['bin']['xyz'] == pytest.approx([0.35189, -0.10578, 0.18307])             # recorded 2026-10-26 18:27 from the real arm
+    pal.rp.check_bin_pose(CONFIG, recorded['bin'])
+
+
+def test_a_bad_brick_goes_to_the_bin_and_the_good_ones_carry_on(run, tmp_path, capsys):
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'B',
+                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0', 'G'], bad='bin', poses=BIN)
+    assert code == 0 and capture.labels == ['G', 'B', 'G'] and capture.bins[0] is None and capture.bins[2] is None
+    assert capture.bins[1]['xyz'] == pytest.approx([0.35189, -0.10578, 0.18307])
+    bin_call = capture.calls[1]
+    assert bin_call[bin_call.index('--place-offset') + 1:bin_call.index('--place-offset') + 3] == ['0', '0'] and '--place' not in bin_call
+    good = pal.load_state(tmp_path / 'row.json')
+    assert [e['slot'] for e in good['placed']] == [1, 2]                                     # the good ones are slots 1 and 2: no gap
+    assert not (tmp_path / 'row_bad.json').exists()                                          # the bin has no row
+    out = capsys.readouterr().out
+    assert '[B = BAD]: into the BIN at x=0.3519 y=-0.1058 z=0.1831' in out and 'Plan: 1=G (good), 2=B (bad), 3=G (good)' in out
+
+
+def test_a_bad_brick_without_a_recorded_bin_is_refused_before_anything_moves(run, capsys):
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.09', '-0.03', '0.26', '-85', 'B'], bad='bin')
+    err = capsys.readouterr().err
+    assert code == 2 and not capture.calls and 'none is recorded' in err and 'record_pose.py bin' in err
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G'], bad='bin')       # only good bricks: no bin needed
+    assert code == 0 and len(capture.calls) == 1
+
+
+def test_a_bin_pose_that_cannot_be_used_is_refused(run, capsys):
+    tilted = {'bin': dict(BIN['bin'], tilt_deg=30.0)}
+    code, capture = run(PICK + ['--label', 'B'], bad='bin', poses=tilted)
+    assert code == 2 and not capture.calls and 'tilted' in capsys.readouterr().err
+    low = {'bin': dict(BIN['bin'], xyz=[0.35, -0.1, -0.01])}
+    code, capture = run(PICK + ['--label', 'B'], bad='bin', poses=low)
+    assert code == 2 and 'too close to the table' in capsys.readouterr().err
+
+
+def test_the_bad_mode_is_checked():
+    assert pal.check_bad_mode(CONFIG) == 'bin' and pal.check_bad_mode(dict(CONFIG, palletize_bad_mode='row')) == 'row'
+    with pytest.raises(ValueError, match='palletize_bad_mode'):
+        pal.check_bad_mode(dict(CONFIG, palletize_bad_mode='trash'))
+
+
+def test_the_status_names_the_bin_and_the_shift_of_a_bin_is_refused(run, tmp_path, capsys):
+    run(PICK, bad='bin', poses=BIN)
+    capsys.readouterr()
+    run(['--status'], bad='bin', poses=BIN)
+    out = capsys.readouterr().out
+    assert '--- B: BAD bricks go to the BIN pose: x=0.3519 y=-0.1058 z=0.1831' in out and '--- G: GOOD bricks' in out
+    code, _ = run(['--shift', '0.001', '0', '--label', 'B'], bad='bin', poses=BIN)
+    assert code == 2 and 'record the bin again' in capsys.readouterr().err
+
+
+def bin_mission(monkeypatch, pose):
+    m = fake.mission()
+    m.__class__ = pal.PalletizeMission
+    monkeypatch.setattr(pal.PalletizeMission, 'bin_pose', pose)
+    m.on_placed = None
+    return m
+
+
+def test_the_bad_brick_is_carried_straight_to_a_bin_that_is_higher_than_the_carry_height(monkeypatch):
+    m = bin_mission(monkeypatch, BIN['bin'])
+    m.place_brick()
+    steps = [entry[0] for entry in m.mover.log]
+    assert steps[-1] == 'Carry the brick to the bin pose' and 'Back off from the bin' not in steps and m.mover.opened == 1
+    command = [e for e in m.mover.log if e[0] == 'Carry the brick to the bin pose'][0][1]
+    # the fake arm logs the point the HAND is sent to (the given point plus the centring offset): it is the recorded pose itself
+    assert command[:2] == pytest.approx(BIN['bin']['xyz'][:2]) and command[2] == pytest.approx(0.18307)
+    assert m.mover.detached == 1 and m.place_trace['bin']['xyz'] == pytest.approx(BIN['bin']['xyz'])
+
+
+def test_a_low_bin_is_entered_from_above_and_left_the_same_way(monkeypatch):
+    m = bin_mission(monkeypatch, dict(BIN['bin'], xyz=[0.35, -0.10, 0.05]))
+    m.place_brick()
+    steps = [entry[0] for entry in m.mover.log]
+    assert steps[-3:] == ['Carry the brick above the bin', 'Lower the brick to the bin pose', 'Back off from the bin']
+    above = [e for e in m.mover.log if e[0] == 'Carry the brick above the bin'][0][1]
+    assert above[2] == pytest.approx(m.plan['above'][2]) and m.mover.opened == 1              # at least the carry height
+
+
+def test_the_far_moves_to_and_from_the_bin_run_at_transit_speed():
+    for label in ('Carry the brick to the bin pose', 'Carry the brick above the bin', 'Back off from the bin'):
+        assert label in auto.AutoMission.TRANSIT
+    assert 'Lower the brick to the bin pose' not in auto.AutoMission.TRANSIT                  # the last bit down stays slow
+

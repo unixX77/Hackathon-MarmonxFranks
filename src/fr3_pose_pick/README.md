@@ -267,6 +267,23 @@ same config, so every locked value (grasp height, centring, place height, grasp 
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
 
+## Bad bricks go to a recorded BIN pose (2026-10-26 18:27)
+
+Move the arm to where the bad bricks should be dropped (hand pointing down), hold it still, and record the pose under the name `bin`:
+
+    ros2 run fr3_pose_pick record_pose.py bin --config src/fr3_pose_pick/config/pose_pick.yaml     # --show lists, --delete NAME forgets
+
+`record_pose.py` only READS the hand pose from TF (about 20 readings over 2 s, refused if they differ by more than 1 mm), and saves the
+average (position, quaternion, yaw, tilt) in `config/poses.yaml`, which is in git. The pose recorded on 2026-10-26 18:27 from the real
+arm is x=0.3519 y=-0.1058 z=0.1831, yaw 0.22 deg, tilted 0.7 deg from pointing down.
+
+A brick labelled **B** (`--brick X Y Z A B`, or `--label B`) is picked like any other, then carried to that pose (straight there if the
+bin is higher than the carry height; from above and back up the same way if it is lower, `bin_clearance`), the hand opens, and the
+run goes on with the next brick; the good ones keep filling the good row with no gap. The hand ends AT the recorded pose (the centring
+offset of the grasp is taken off the commanded point). Refused before anything moves: a B brick when no bin is recorded, a bin pose with
+the hand tilted more than `max_tilt_deg`, out of reach, within 3 cm of the table or above 0.55 m. `palletize_bad_mode: row` brings back the second
+row for the bad bricks. The far moves to and from the bin run at `transit_velocity_scale`, the last bit down at the normal speed.
+
 ## Palletizing now drops the brick and sorts good from bad (2026-10-26 18:20)
 
 Seating bricks on the studs was not reliable (the plate's studs are unknown to the robot), so `pose_pick_palletize.py` now puts a brick

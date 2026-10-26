@@ -80,7 +80,8 @@ class AutoMission(pp.Mission):
     drop_fine = False              # drop mode: still stop 8 mm up and align again before dropping
     search_rings = None            # how many rings of place_first_search_step (None: place_first_search_rings, the whole 8 mm cell)
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
-    TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up')
+    TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up',
+               'Carry the brick to the bin pose', 'Carry the brick above the bin', 'Back off from the bin')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
