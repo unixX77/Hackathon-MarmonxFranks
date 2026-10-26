@@ -159,6 +159,7 @@ palletize_start_offset: [0.0, 0.40]
 # about 3.5 s each, a whole 8 mm stud cell), and the row is taken from where it seats. Later bricks use place_search_tries.
 place_first_search_rings: 4
 place_first_search_step: 0.001
+place_row_search_rings: 2        # the next row bricks: this many rings of the same step (2 x 1 mm each way = 25 spots) around the aim
 
 # Autonomous speed: moves far from the brick and the plate (hover, lift, carry, back off) run at this fraction of the full joint
 # speed; the approach to the brick, the alignment and the press keep velocity_scale. At most 0.2 (the arm is carrying a brick).

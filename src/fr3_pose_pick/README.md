@@ -282,8 +282,9 @@ the bricks go into a ROW instead of back where they were picked:
   40 cm to the robot's left, along +y, clear of the stack), on the table / baseplate, at the angle it was picked at. The window
   `workspace_y` was widened to 0.55 for it (a slot beyond is refused before the arm moves). The studs of that plate are unknown, so a brick that
   sits on top of them is tried again over the whole 8 mm stud cell (`place_first_search_rings` 4 x `place_first_search_step` 1 mm = 81 spots,
-  middle outwards, about 3.5 s each) and the row is taken from where it SEATS: position, angle, seat height. Later bricks use the short
-  search (`place_search_tries`). A 16 mm gap is two studs, so every next slot is on the grid too. Only a new row reads the offset. Every next brick goes NEXT to the one before, along +y, `--gap` apart (default 16 mm, so the
+  middle outwards, about 3.5 s each) and the row is taken from where it SEATS: position, angle, seat height. The next row bricks search `place_row_search_rings` (2 = 25 spots, +-2 mm) around where the row says the studs are, and every
+  brick that seats refines the row origin (the mean of all seated bricks): the 17:55 run seated slots 1 and 2 after 1 and 3 shifted
+  tries and then missed slot 3 by a fraction of a millimetre. A 16 mm gap is two studs, so every next slot is on the grid too. Only a new row reads the offset. Every next brick goes NEXT to the one before, along +y, `--gap` apart (default 16 mm, so the
   centres are 32 mm apart), long side along x (`--row-yaw 0`).
 - The row is remembered in `pose_pick_palletize.json` (gitignored): each command, or each `--brick`, takes the next slot. Slot 1 is
   wherever the first brick really ended up (the measured hand position at the release); the others are exact multiples of the pitch from

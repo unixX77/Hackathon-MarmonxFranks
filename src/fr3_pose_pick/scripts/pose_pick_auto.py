@@ -75,7 +75,8 @@ class AutoMission(pp.Mission):
     """The Mission of pose_pick.py with its own log and a stop-and-explain failure path. Same motions."""
 
     stage_pick = grasp_pick = truth_target = release_hand = seat_z = release_yaw_deg = None      # filled in by the run
-    search_wide = False            # the first brick of a row: look for the studs over their whole 8 mm cell
+    search_wide = False            # a row brick: look for the studs in rings around the aligned position (see search_pattern)
+    search_rings = None            # how many rings of place_first_search_step (None: place_first_search_rings, the whole 8 mm cell)
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
     TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up')
 
@@ -181,10 +182,11 @@ class AutoMission(pp.Mission):
 
     def search_pattern(self):
         """(cells, step): the sideways tries for a brick that sits on the studs, in units of step, from the middle outwards.
-        The first brick of a row (search_wide) has no known stud grid: it tries the whole 8 mm cell of the studs, ring by ring
-        (place_first_search_rings x place_first_search_step each way, 4 x 1 mm = 81 spots); a brick with a known seat just a few."""
+        The first brick of a row has no known stud grid: it tries the whole 8 mm cell of the studs, ring by ring
+        (place_first_search_rings x place_first_search_step each way, 4 x 1 mm = 81 spots); the next row bricks fewer rings
+        (place_row_search_rings, 2 = 25 spots), since the row says where the studs are to within a millimetre or so."""
         if self.search_wide:
-            rings = int(self.c.get('place_first_search_rings', 4))
+            rings = int(self.search_rings or self.c.get('place_first_search_rings', 4))
             step = float(self.c.get('place_first_search_step', 0.001))
             cells = sorted(((i, j) for i in range(-rings, rings + 1) for j in range(-rings, rings + 1)),
                            key=lambda cell: (max(abs(cell[0]), abs(cell[1])), math.atan2(cell[1], cell[0]) % (2 * math.pi)))

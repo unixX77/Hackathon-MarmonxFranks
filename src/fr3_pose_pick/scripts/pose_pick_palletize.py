@@ -158,13 +158,15 @@ class PalletizeMission(auto.AutoMission):
     state = state_path = truth = seat_z = None
     index = 0
     anchor = False                                       # this brick is the anchor: it only defines the row
-    wide = False                                         # the first brick of an unanchored row: search the studs over their whole cell
+    wide = False                                         # a row brick (not the anchor): search the studs in rings around the aim
+    rings = None                                         # how many rings (None: the whole cell, for the first brick)
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.truth_target = type(self).truth             # None for the first brick: it is set down relative to its own pick
         self.seat_z = type(self).seat_z                  # the row's measured seat height
         self.search_wide = type(self).wide
+        self.search_rings = type(self).rings
         self.on_placed = self.record_slot
 
     def record_slot(self):
@@ -182,6 +184,12 @@ class PalletizeMission(auto.AutoMission):
             cls.state['seat_z'] = round(float(hand[2]), 5)
             if not cls.state.get('row_yaw_fixed') and self.release_yaw_deg is not None:
                 cls.state['row_yaw_deg'] = round(((float(self.release_yaw_deg) + 90.0) % 180.0) - 90.0, 3)
+        elif not cls.state.get('anchored') and cls.index > 0:
+            # Every brick that seats is another measurement of where the studs are (the hand can be up to ~0.5 mm off the grid point
+            # and the brick still drops in): the origin becomes the mean of them all, which gets better with every brick.
+            n = len(cls.state['placed'])
+            sample = [float(hand[0]), float(hand[1]) - cls.index * cls.state['pitch']]
+            cls.state['origin'] = [round((cls.state['origin'][k] * n + sample[k]) / (n + 1), 5) for k in range(2)]
         cls.state['placed'].append({'slot': cls.index + 1, 'time': time.strftime('%Y-%m-%d %H:%M:%S'),
                                     'released_hand_xy': [round(float(hand[0]), 5), round(float(hand[1]), 5)]})
         save_state(cls.state_path, cls.state)
@@ -329,14 +337,15 @@ def main(argv=None):
                 truth = slot_xy(state, index)
                 place = ['--place', fmt(truth[0]), fmt(truth[1])]
                 yaw_args = ['--place-yaw', fmt(state['row_yaw_deg'])]
-                where = f'x={truth[0]:.4f} y={truth[1]:.4f}'
+                where = f'x={truth[0]:.4f} y={truth[1]:.4f} (a few mm of searching around it if the brick sits on the studs)'
             print(f'\n=== Brick {number} of {len(picks)}: row slot {index + 1}, {where} ===', flush=True)
             if number == 1 and notes:
                 print('\n'.join(notes), flush=True)
             PalletizeMission.state, PalletizeMission.state_path, PalletizeMission.index, PalletizeMission.truth = \
                 state, path, index, truth
             PalletizeMission.anchor, PalletizeMission.seat_z = is_anchor, state.get('seat_z')
-            PalletizeMission.wide = (not is_anchor) and state['origin'] is None
+            PalletizeMission.wide = not is_anchor
+            PalletizeMission.rings = None if state['origin'] is None else int(c.get('place_row_search_rings', 2))
             builtins.input = auto.countdown_input(seconds if number == 1 else 0)         # one countdown per command
             sys.argv = [old_argv[0]] + base + pick + place + yaw_args + ['--no-inspect', '--no-step']
             code = pp.main()

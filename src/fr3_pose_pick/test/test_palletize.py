@@ -88,6 +88,7 @@ class Capture:
     def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4, release_yaw=1.7):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
         self.anchors, self.seat_zs, self.grasp_yaw, self.release_yaw, self.wides = [], [], grasp_yaw, release_yaw, []
+        self.rings = []
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -98,6 +99,7 @@ class Capture:
         self.anchors.append(cls.anchor)
         self.seat_zs.append(cls.seat_z)
         self.wides.append(cls.wide)
+        self.rings.append(cls.rings)
         mission.release_yaw_deg = self.release_yaw
         mission.grasp_pick = np.array([0.4263, -0.0056, 0.0002])           # the hand's measured pose at the grasp
         mission.grasp_hand_yaw_deg = self.grasp_yaw
@@ -370,13 +372,30 @@ def test_an_old_row_file_without_the_new_fields_still_loads(tmp_path):
 
 
 # ------------------------------------------------------------------- the first brick finds its own seat
-def test_only_the_first_brick_of_an_unanchored_row_searches_widely(run, tmp_path):
+def test_every_row_brick_searches_in_rings_the_first_the_whole_cell_and_an_anchor_not_at_all(run, tmp_path):
     code, capture = run(PICK)
-    assert capture.wides == [True] and capture.anchors == [False]
-    code, capture = run(PICK)                                                                # slot 2: the row is known now
-    assert capture.wides == [False]
+    assert capture.wides == [True] and capture.rings == [None] and capture.anchors == [False]    # the whole cell
+    code, capture = run(PICK)                                                                # slot 2: the row is known to ~1 mm
+    assert capture.wides == [True] and capture.rings == [2]
     code, capture = run(['--reset'] + ANCHOR)
     assert capture.wides == [False] and capture.anchors == [True]                            # an anchor is already seated
+
+
+def test_every_seated_brick_refines_where_the_row_is(run, tmp_path):
+    """17:55: slot 1 seated 0.7 mm one way, slot 2 3 tries on: the hand is up to ~0.5 mm off the grid point when a brick drops in."""
+    run(PICK, Capture(hand=(0.4000, -0.0200)))                                               # slot 1 seated with the hand here
+    state = pal.load_state(tmp_path / 'row.json')
+    assert state['origin'] == [0.4, -0.02]
+    capture = Capture(hand=(0.4010, -0.0188))                                                # slot 2 seated 1.0 mm / 1.2 mm off the multiple
+    run(PICK, capture)
+    state = pal.load_state(tmp_path / 'row.json')
+    # the Capture adds 0.032 per brick already down, so the second sample is (0.401, -0.0188 + 0.032 - 0.032)
+    assert state['origin'] == pytest.approx([0.4005, -0.0194], abs=1e-5)                     # the mean of the two
+    assert [e['slot'] for e in state['placed']] == [1, 2]
+    run(['--reset'] + ANCHOR)
+    state = pal.load_state(tmp_path / 'row.json')
+    run(PICK, Capture(hand=(0.5, 0.5)))
+    assert pal.load_state(tmp_path / 'row.json')['origin'] == state['origin']                # an anchor's origin is exact: not averaged
 
 
 def test_the_next_bricks_use_the_angle_and_seat_height_of_the_first_that_seated(run, tmp_path):
