@@ -39,6 +39,8 @@ hand_zero_width: 0.0
 baseplate_thickness: 0.0
 clearance: 0.10                 # hover / lift height above the grasp
 place_margin: 0.002             # --place: the hand stops this far above the height the brick rests at before letting go
+place_inspect_height: 0.03      # the place inspection stop: the brick pauses this far above the release height (m)
+place_max_press: 0.003          # a correction at the place may lower the brick this far below its planned seat, on top of place_margin (m)
 # ---- Hand widths (total opening between the fingertips), used for EVERY open and close --------
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
 # (short side 16 mm): open 18 mm, close 15 mm. Change them here, not on the command line.

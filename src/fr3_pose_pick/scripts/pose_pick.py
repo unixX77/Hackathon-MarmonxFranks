@@ -15,8 +15,10 @@ inspection stop is where you check them against the real brick and correct them.
   6. LIFT    straight back up. Without --place the brick stays in the hand.
   With --place X Y [Z] [--place-yaw DEG] it goes on:
   7. CARRY   straight line at hover height to above the place pose
-  8. LOWER   straight down until the brick rests on the table (or at Z), place_margin above it
-  9. RELEASE open the hand, then back off straight up
+  8. INSPECT the brick stops place_inspect_height (3 cm) above where it will be put down. Look at it against the
+             table / baseplate / other bricks and correct x, y, z, yaw by eye (prompt `place correction>`)
+  9. LOWER   straight down until the brick rests on the table (or at Z), place_margin above it
+ 10. RELEASE open the hand, then back off straight up
 The correction you needed is printed and appended to the offsets log (offsets_log in the config),
 so you can tell your teammate what the pose was off by.
 
@@ -241,14 +243,38 @@ def parse_nudge(text, max_step, max_yaw_step_deg, max_z_step=0.005):
     return ('nudge', values['x'], values['y'], values['yaw'], values['z'])
 
 
-def apply_nudge(plan, dx, dy, dyaw_deg, dz=0.0):
+PLACE_KEYS = ('centre', 'grip', 'inspect', 'above', 'release', 'place_inspect')
+
+
+def apply_nudge(plan, dx, dy, dyaw_deg, dz=0.0, keys=('centre', 'grip', 'inspect', 'above')):
     """Shift the plan sideways / up and turn it."""
-    for key in ('centre', 'grip', 'inspect', 'above'):
-        plan[key][0] += dx
-        plan[key][1] += dy
-        plan[key][2] += dz
+    for key in keys:
+        if key in plan:
+            plan[key][0] += dx
+            plan[key][1] += dy
+            plan[key][2] += dz
     plan['yaw'] = float(wrap_line_angle(plan['yaw'] + math.radians(dyaw_deg)))
     return plan
+
+
+def check_place_nudge(c, total, centre_xy):
+    """Is the total correction made at the place inspection stop allowed? total = [dx, dy, dyaw_deg, dz] (metres,
+    degrees); centre_xy = where the brick would then be put down. Raises ValueError saying why not."""
+    limit_z = c.get('max_total_nudge_z', 0.015)
+    if math.hypot(total[0], total[1]) > c['max_total_nudge'] or abs(total[2]) > 45 or abs(total[3]) > limit_z:
+        raise ValueError(f'Total correction would be {math.hypot(total[0], total[1]) * 1000:.0f} mm sideways / '
+                         f'{total[3] * 1000:+.0f} mm up / {total[2]:.0f} deg: more than allowed '
+                         f'({c["max_total_nudge"] * 1000:.0f} mm / {limit_z * 1000:.0f} mm / 45 deg). '
+                         'The place pose is probably wrong; stop and check it.')
+    lowest = -(c.get('place_margin', 0.0) + c.get('place_max_press', 0.003))
+    if total[3] < lowest - 1e-9:
+        raise ValueError(f'z {total[3] * 1000:+.1f} mm in total would push the brick {(lowest - total[3]) * 1000:.1f} mm '
+                         f'further than allowed into the surface it is put down on (it is released {c.get("place_margin", 0.0) * 1000:.1f} mm '
+                         f'above its seat and may go {c.get("place_max_press", 0.003) * 1000:.1f} mm lower: place_margin, '
+                         'place_max_press). If the surface really is lower than planned, fix table_top_z / baseplate_thickness.')
+    (wx0, wx1), (wy0, wy1) = c['workspace_x'], c['workspace_y']
+    if not (wx0 <= centre_xy[0] <= wx1 and wy0 <= centre_xy[1] <= wy1):
+        raise ValueError(f'The corrected place x={centre_xy[0]:.3f} y={centre_xy[1]:.3f} would leave the allowed window')
 
 
 STACK_NODES = ('move_group', 'controller_manager', 'robot_state_publisher')
@@ -429,13 +455,15 @@ def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_
 
 
 class Mission:
-    def __init__(self, node, c, plan, buffer, inspect, given, place=None, on_placed=None):
+    def __init__(self, node, c, plan, buffer, inspect, given, place=None, on_placed=None, place_inspect=False):
         from visualization_msgs.msg import Marker
         import smooth_motion
         from smooth_motion import Mover
         self.node, self.c, self.plan, self.inspect, self.given = node, c, plan, inspect, given
         self.place = place        # {'xy': (x, y), 'z': metres or None, 'is_tcp': bool, 'yaw': radians or None}
         self.on_placed = on_placed    # called once the brick is released (the pallet remembers its slot)
+        self.place_inspect = place_inspect               # stop above the place spot for corrections
+        self.place_nudge = np.zeros(4)                   # total correction at the place: dx, dy (m), dyaw (deg), dz (m)
         self.nudge = np.zeros(4)                                    # total dx, dy (m), dyaw (deg), dz (m)
         self.grasp_hand_yaw_deg = None
         smooth_motion.MAX_JOINT_SWING = float(c['max_joint_swing'])  # refuse big turns of joints 1-6
@@ -468,8 +496,16 @@ class Mission:
             self.draw_box(1, 'place_target', where['centre'], where['yaw'], (0.1, 0.4, 1.0, 0.55))
 
     def place_plan(self):
-        """The place pose; a place yaw left out means the brick keeps the angle it was picked at."""
-        return resolve_place(self.c, self.plan, self.place)
+        """The place pose; a place yaw left out means the brick keeps the angle it was picked at. Includes the
+        corrections made at the place inspection stop, and the point of that stop (place_inspect_height above the
+        release height)."""
+        where = resolve_place(self.c, self.plan, self.place)
+        where['place_inspect'] = [where['release'][0], where['release'][1],
+                                  where['release'][2] + float(self.c.get('place_inspect_height', 0.03))]
+        if np.any(self.place_nudge):
+            dx, dy, dyaw, dz = self.place_nudge
+            apply_nudge(where, dx, dy, dyaw, dz, PLACE_KEYS)
+        return where
 
     def spin(self, seconds):
         import rclpy
@@ -537,6 +573,46 @@ class Mission:
             print(f'  Total correction so far: dx={total[0] * 1000:+.1f} mm  dy={total[1] * 1000:+.1f} mm  '
                   f'dz={total[3] * 1000:+.1f} mm  dyaw={total[2]:+.1f} deg')
 
+    def correct_place(self):
+        """The place inspection stop: the brick hangs place_inspect_height above where it will be put down. Correct
+        x, y, z, yaw by eye, then ok."""
+        from smooth_motion import StepAbort
+        c = self.c
+        self.say('PLACE INSPECT: look at the brick against the surface it will be put down on (and its neighbours).')
+        print('  Type a small correction, e.g.  z -0.002   x 0.002   y -0.001   yaw 3   (metres / degrees, base axes:\n'
+              '  +x away from the robot, +y to its left, +z UP: z -0.002 puts it down 2 mm lower),  ok = lower and\n'
+              '  release,  q = stop here (the brick stays in the hand).')
+        while True:
+            try:
+                answer = input('  place correction> ')
+            except EOFError:
+                raise StepAbort('the place correction prompt needs a terminal to answer in') from None
+            try:
+                command = parse_nudge(answer, c['max_nudge_step'], c['max_nudge_yaw_step_deg'],
+                                      c.get('max_nudge_z_step', 0.005))
+            except ValueError as problem:
+                print(f'  {problem}')
+                continue
+            if command[0] == 'ok':
+                return
+            if command[0] == 'quit':
+                raise StepAbort('stopped at your request during the place inspection; the brick is still in the hand')
+            _, dx, dy, dyaw, dz = command
+            total = self.place_nudge + np.array([dx, dy, dyaw, dz])
+            previous = self.place_nudge.copy()
+            self.place_nudge = total
+            try:
+                where = self.place_plan()
+                check_place_nudge(c, total, where['centre'][:2])
+            except ValueError as problem:
+                self.place_nudge = previous
+                print(f'  {problem}')
+                continue
+            self.show_target()
+            self.go('Place correction', where['place_inspect'], where['yaw'])
+            print(f'  Total place correction so far: dx={total[0] * 1000:+.1f} mm  dy={total[1] * 1000:+.1f} mm  '
+                  f'dz={total[3] * 1000:+.1f} mm  dyaw={total[2]:+.1f} deg')
+
     def save_log(self):
         path = Path(self.c.get('offsets_log', 'pose_pick_offsets.json'))
         try:
@@ -552,6 +628,9 @@ class Mission:
         if self.place is not None:
             where = self.place_plan()
             entry['place_xyz'], entry['place_yaw_deg'] = where['grip'], math.degrees(where['yaw'])
+            entry['place_correction'] = {'dx_dy_m': [float(self.place_nudge[0]), float(self.place_nudge[1])],
+                                         'dz_m': float(self.place_nudge[3]), 'yaw_deg': float(self.place_nudge[2]),
+                                         'inspected': bool(self.place_inspect)}
         history.append(entry)
         path.write_text(json.dumps(history, indent=2))
         self.say(f'Correction logged in {path}')
@@ -561,6 +640,10 @@ class Mission:
         where = self.place_plan()
         self.show_target()
         self.go('Carry the brick above the place pose', where['above'], where['yaw'])
+        if self.place_inspect:
+            self.go('Lower the brick to the place inspection height', where['place_inspect'], where['yaw'])
+            self.correct_place()
+            where = self.place_plan()           # with the corrections
         self.go('Lower the brick to the place pose', where['release'], where['yaw'])
         self.mover.hand()                       # open: the brick stays where it is
         self.mover.detach_block()
@@ -655,7 +738,16 @@ def main():
     parser.add_argument('--no-step', action='store_true', help='Never ask before moves')
     parser.add_argument('--inspect', action='store_true', help='Stop above the brick for corrections (default on a real robot)')
     parser.add_argument('--no-inspect', action='store_true', help='Do not stop for corrections')
+    parser.add_argument('--place-inspect', action='store_true',
+                        help='Stop above the place spot for corrections of x, y, z, yaw (default: as for the pick)')
+    parser.add_argument('--no-place-inspect', action='store_true', help='Do not stop above the place spot')
     args, ros_args = parser.parse_known_args()
+    if args.place_inspect and args.no_place_inspect:
+        raise ValueError('Choose either --place-inspect or --no-place-inspect')
+    if (args.place_inspect or args.no_place_inspect) and not (
+            args.place or args.place_camera_xyz or args.place_offset or args.pallet):
+        raise ValueError('--place-inspect / --no-place-inspect need a place: --place, --place-offset, '
+                         '--place-camera-xyz or --pallet')
     if args.step and args.no_step or args.inspect and args.no_inspect:
         raise ValueError('Choose either --step or --no-step, and either --inspect or --no-inspect')
     if args.pose is not None and len(args.pose) not in (2, 3):
@@ -836,7 +928,11 @@ def main():
             validate(task_config(c, resolve_place(c, plan, place)))
 
         inspect = args.inspect or (not simulated and not args.no_inspect)
-        mission = Mission(node, c, plan, buffer, inspect, given, place, on_placed)
+        place_inspect = place is not None and not args.no_place_inspect and (args.place_inspect or inspect)
+        height = float(c.get('place_inspect_height', 0.03))
+        if not 0 < height < c['clearance']:
+            raise ValueError('place_inspect_height must be above the release height and below the hover clearance')
+        mission = Mission(node, c, plan, buffer, inspect, given, place, on_placed, place_inspect)
         centre = plan['centre']
         print(f'Pick pose: x={centre[0]:.3f} y={centre[1]:.3f} z={centre[2]:.4f}  yaw={math.degrees(plan["yaw"]):.0f} deg\n'
               f'Hand will hover at z={plan["above"][2]:.3f}, stop at z={plan["inspect"][2]:.3f} '
@@ -846,6 +942,8 @@ def main():
             where = mission.place_plan()
             print(f'Place pose: x={where["centre"][0]:.3f} y={where["centre"][1]:.3f} z={where["centre"][2]:.4f}  '
                   f'yaw={math.degrees(where["yaw"]):.0f} deg   (release with the hand at z={where["release"][2]:.4f})')
+            print('Place inspection stop: ' + (f'ON ({height * 1000:.0f} mm above the release height: correct x, y, z, yaw)'
+                                              if place_inspect else 'off'))
         if pal is not None:
             print(f'Pallet: {pl.slot_label(pal, pal_index)}  x={pal_x:.3f} y={pal_y:.3f}  yaw {pal["yaw_deg"]:.0f} deg')
             print('\n'.join(pl.render(pal, pal_state, pal_index) + pallet_notes))

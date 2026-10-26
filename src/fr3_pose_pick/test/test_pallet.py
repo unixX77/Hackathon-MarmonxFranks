@@ -270,6 +270,7 @@ def test_the_pallet_slot_is_recorded_before_the_back_off():
     mission.mover = types.SimpleNamespace(hand=lambda close=False: order.append(('hand', 'close' if close else 'open')),
                                           detach_block=lambda: order.append(('detach',)))
     mission.on_placed = lambda: order.append(('recorded',))
+    mission.place_inspect = False
     mission.place_brick()
     names = [item[1] if item[0] == 'go' else item[0] for item in order]
     assert names.index('detach') < names.index('recorded') < names.index('Back off straight up')

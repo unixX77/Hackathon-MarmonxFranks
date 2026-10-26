@@ -231,6 +231,27 @@ ros2 run fr3_pose_pick pose_pick.py --config src/fr3_pose_pick/config/pose_pick.
   brick (2 to 3 mm from the camera, unless you correct it at the inspection stop). The spacing along a row is only
   as good as that.
 
+## Correct the place by eye (x, y, z, yaw) before the brick is lowered
+
+Like the pick, the place has an inspection stop. After the brick is carried above the place spot it comes down to
+`place_inspect_height` (3 cm) **above where it will be put down** and waits at `place correction>`:
+
+```
+z -0.002          2 mm LOWER  (z is up: negative = down)
+x 0.002 y -0.001  move it 2 mm away from the robot / 1 mm to the robot's right
+yaw 3             turn the brick 3 degrees
+ok                lower it, let go and back off      q   stop here: the brick stays in the hand, nothing is released
+```
+- On a real robot it is on by default (as the pick inspection); `--no-place-inspect` turns it off, `--place-inspect` forces it
+  on (also in simulation). It works with `--place`, `--place-offset`, `--place-camera-xyz` and `--pallet`.
+- Limits, as at the pick: 10 mm in x and y, 5 mm in z and 15 degrees per command; 30 mm, 15 mm and 45 degrees in total.
+- **It will not press the brick into the surface:** the brick is released `place_margin` (2 mm) above its seat and may go
+  `place_max_press` (3 mm) lower than that, so `z` down to -5 mm in total. If the surface really is lower than planned, fix
+  `table_top_z` / `baseplate_thickness` instead. It also refuses a correction that would leave the allowed window.
+- The correction applies to this brick only; it is written to `pose_pick_offsets.json` (`place_correction`: dx, dy, dz, yaw).
+  If every place needs the same z, tell me and the value can be stored in `place_margin`.
+- The back-off after the release starts from the corrected position.
+
 ## Smooth, straight-line motion (no jerks)
 
 Every move is a straight Cartesian line (MoveIt's `compute_cartesian_path`): the hand stays within 0.01 to 0.05 mm of
