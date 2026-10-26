@@ -547,7 +547,12 @@ BIN = {'bin': {'xyz': [0.35189, -0.10578, 0.18307], 'quat_xyzw': [-0.99998, -0.0
 def test_the_shipped_config_sends_bad_bricks_to_the_bin():
     assert CONFIG['palletize_bad_mode'] == 'bin'
     recorded = pal.rp.load_poses(pal.rp.poses_path(CONFIG_PATH))
-    assert recorded['bin']['xyz'] == pytest.approx([0.35189, -0.10578, 0.18307])             # recorded 2026-10-26 18:27 from the real arm
+    measured = recorded['bin'].get('xyz_recorded', recorded['bin']['xyz'])
+    assert measured == pytest.approx([0.35189, -0.10578, 0.18307])                           # recorded 2026-10-26 18:27 from the real arm
+    nudges = recorded['bin'].get('nudges', [])
+    total = [sum(n[k] for n in nudges) for k in ('dx', 'dy', 'dz')]
+    assert recorded['bin']['xyz'] == pytest.approx([m + d for m, d in zip(measured, total)], abs=1e-5)   # the measurement plus the nudges
+    assert max(abs(v) for v in total) <= 0.02                                                # a few mm, never a different place
     pal.rp.check_bin_pose(CONFIG, recorded['bin'])
 
 

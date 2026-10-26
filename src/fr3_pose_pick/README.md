@@ -275,7 +275,9 @@ Move the arm to where the bad bricks should be dropped (hand pointing down), hol
 
 `record_pose.py` only READS the hand pose from TF (about 20 readings over 2 s, refused if they differ by more than 1 mm), and saves the
 average (position, quaternion, yaw, tilt) in `config/poses.yaml`, which is in git. The pose recorded on 2026-10-26 18:27 from the real
-arm is x=0.3519 y=-0.1058 z=0.1831, yaw 0.22 deg, tilted 0.7 deg from pointing down.
+arm is x=0.3519 y=-0.1058 z=0.1831, yaw 0.22 deg, tilted 0.7 deg from pointing down. It was then nudged 2 mm toward -y on request
+(`record_pose.py bin --shift 0 -0.002`): the file keeps the measurement (`xyz_recorded`) and every nudge (`nudges`), so the bin is now
+x=0.3519 y=-0.1078 z=0.1831. `--shift DX DY [DZ]` takes metres, at most 2 cm per call, and refuses a nudge that makes the bin unusable.
 
 A brick labelled **B** (`--brick X Y Z A B`, or `--label B`) is picked like any other, then carried to that pose (straight there if the
 bin is higher than the carry height; from above and back up the same way if it is lower, `bin_clearance`), the hand opens, and the

@@ -11,6 +11,9 @@ pointing down. Nothing is commanded: this only reads. The file is written next t
 
   --show           print the recorded poses and exit
   --delete NAME    forget a pose
+  --shift DX DY [DZ]   nudge a recorded pose by this much (metres, at most 2 cm per call, a few mm is the point), e.g. the bin
+                   2 mm toward -y:  record_pose.py bin --shift 0 -0.002. The measurement stays in the file (xyz_recorded) with
+                   every nudge (nudges), so xyz is always the measurement plus the nudges. Nothing moves; nothing is read from the arm.
 
 pose_pick_palletize.py uses the pose called "bin" for the BAD bricks: it carries the brick there, lets go and goes back to the good ones.
 """
@@ -27,6 +30,7 @@ MAX_SPREAD = 0.001            # m: the samples may differ by this much (the arm 
 SAMPLES = 20
 MAX_REACH = 0.80              # m from the base axis: the FR3 reaches 0.855 m at full stretch
 MAX_BIN_Z = 0.55              # m: the same ceiling as max_hover_z
+MAX_SHIFT = 0.02              # m per --shift call
 
 
 def poses_path(config_path):
@@ -81,6 +85,21 @@ def pose_record(samples):
             'recorded': time.strftime('%Y-%m-%d %H:%M:%S')}
 
 
+def shift_pose(record, dx, dy, dz=0.0):
+    """The record nudged by (dx, dy, dz) metres. The measurement is kept in xyz_recorded and every nudge in nudges, so the
+    numbers can always be traced: xyz = xyz_recorded + the sum of the nudges."""
+    if max(abs(dx), abs(dy), abs(dz)) > MAX_SHIFT:
+        raise ValueError(f'--shift is in metres and at most {MAX_SHIFT * 100:.0f} cm per call (0.002 is 2 mm); record the pose again '
+                         'for a bigger change')
+    shifted = dict(record)
+    shifted.setdefault('xyz_recorded', list(record['xyz']))
+    shifted['xyz'] = [round(float(record['xyz'][0]) + dx, 5), round(float(record['xyz'][1]) + dy, 5),
+                      round(float(record['xyz'][2]) + dz, 5)]
+    shifted['nudges'] = list(record.get('nudges', [])) + [{'time': time.strftime('%Y-%m-%d %H:%M:%S'),
+                                                           'dx': round(dx, 5), 'dy': round(dy, 5), 'dz': round(dz, 5)}]
+    return shifted
+
+
 def check_bin_pose(c, record):
     """Is the recorded pose one the palletizer can use for the bad bricks? Raises ValueError saying what is wrong."""
     x, y, z = record['xyz']
@@ -128,9 +147,30 @@ def main(argv=None):
                         help='the config; the poses are stored in poses.yaml next to it')
     parser.add_argument('--show', action='store_true', help='print the recorded poses and exit')
     parser.add_argument('--delete', metavar='NAME', help='forget a recorded pose and exit')
+    parser.add_argument('--shift', nargs='+', type=float, metavar='D', help='nudge the recorded pose by DX DY [DZ] metres and exit')
     args = parser.parse_args(argv)
     path = poses_path(args.config)
     try:
+        if args.shift:
+            if len(args.shift) not in (2, 3):
+                raise ValueError('--shift takes DX DY or DX DY DZ, in metres')
+            data = load_poses(path)
+            if args.name not in data:
+                raise ValueError(f'There is no pose called {args.name!r} in {path}: record it first')
+            data[args.name] = shift_pose(data[args.name], *args.shift)
+            if args.name == 'bin':
+                try:
+                    import yaml
+                    check_bin_pose(yaml.safe_load(open(args.config, encoding='utf-8')), data[args.name])
+                except OSError:
+                    pass                                   # no config to check against: the next run checks it
+            save_pose(path, args.name, data[args.name])
+            now = data[args.name]
+            print(f'Moved {args.name!r} by dx={args.shift[0] * 1000:+.1f} mm dy={args.shift[1] * 1000:+.1f} mm'
+                  f'{f" dz={args.shift[2] * 1000:+.1f} mm" if len(args.shift) == 3 else ""}: now x={now["xyz"][0]:.4f} '
+                  f'y={now["xyz"][1]:.4f} z={now["xyz"][2]:.4f} (measured x={now["xyz_recorded"][0]:.4f} y={now["xyz_recorded"][1]:.4f} '
+                  f'z={now["xyz_recorded"][2]:.4f}, {len(now["nudges"])} nudge{"s" if len(now["nudges"]) != 1 else ""}).')
+            return 0
         if args.show or args.delete:
             data = load_poses(path)
             if args.delete:

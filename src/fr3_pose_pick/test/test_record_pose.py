@@ -80,6 +80,49 @@ def test_what_can_be_a_bin(record, message):
             rec.check_bin_pose(CONFIG, record)
 
 
+def test_a_pose_can_be_nudged_and_the_measurement_and_the_nudges_are_kept():
+    record = rec.pose_record([hand(0.35189, -0.10578, 0.18307)] * 3)
+    once = rec.shift_pose(record, 0.0, -0.002)
+    assert once['xyz'] == pytest.approx([0.35189, -0.10778, 0.18307]) and once['xyz_recorded'] == record['xyz']
+    twice = rec.shift_pose(once, 0.001, 0.0, 0.0005)
+    assert twice['xyz'] == pytest.approx([0.35289, -0.10778, 0.18357]) and twice['xyz_recorded'] == record['xyz']      # still the first measurement
+    assert [(n['dx'], n['dy'], n['dz']) for n in twice['nudges']] == [(0.0, -0.002, 0.0), (0.001, 0.0, 0.0005)]
+    summed = np.array(twice['xyz_recorded']) + np.sum([[n['dx'], n['dy'], n['dz']] for n in twice['nudges']], axis=0)
+    assert twice['xyz'] == pytest.approx(list(summed), abs=1e-5)                       # xyz = the measurement + the nudges, always
+    assert record['xyz'] == [0.35189, -0.10578, 0.18307] and 'nudges' not in record    # the original record is not changed
+
+
+def test_a_big_shift_is_refused():
+    record = rec.pose_record([hand(0.35, -0.1, 0.18)] * 3)
+    with pytest.raises(ValueError, match='at most 2 cm'):
+        rec.shift_pose(record, 0.0, -0.05)
+    with pytest.raises(ValueError, match='at most 2 cm'):
+        rec.shift_pose(record, 0.0, -2.0)                                              # millimetres typed as metres
+
+
+def test_shift_from_the_command_line(tmp_path, capsys):
+    config = tmp_path / 'pose_pick.yaml'
+    config.write_text(yaml.safe_dump(CONFIG))
+    rec.save_pose(rec.poses_path(config), 'bin', rec.pose_record([hand(0.35189, -0.10578, 0.18307)] * 3))
+    assert rec.main(['bin', '--shift', '0', '-0.002', '--config', str(config)]) == 0
+    assert 'dy=-2.0 mm' in capsys.readouterr().out
+    saved = rec.load_poses(rec.poses_path(config))['bin']
+    assert saved['xyz'] == pytest.approx([0.35189, -0.10778, 0.18307]) and len(saved['nudges']) == 1
+    assert rec.main(['nope', '--shift', '0', '0.001', '--config', str(config)]) == 1                 # no such pose
+    assert rec.main(['bin', '--shift', '0.5', '--config', str(config)]) == 1                         # one number
+    assert rec.main(['bin', '--shift', '0', '0.5', '--config', str(config)]) == 1                    # 50 cm
+    # a nudge that would make the bin unusable is refused and nothing is saved
+    assert rec.main(['bin', '--shift', '0', '0', '-0.019', '--config', str(config)]) == 0            # still above the table: fine
+    assert rec.main(['bin', '--shift', '0', '0', '-0.02', '--config', str(config)]) == 0
+    assert rec.main(['bin', '--shift', '0', '0', '-0.02', '--config', str(config)]) == 0
+    before = rec.load_poses(rec.poses_path(config))['bin']['xyz']
+    for _ in range(10):                                                                           # walk it down to the table
+        if rec.main(['bin', '--shift', '0', '0', '-0.02', '--config', str(config)]) == 1:
+            break
+    assert rec.load_poses(rec.poses_path(config))['bin']['xyz'][2] >= CONFIG['table_top_z'] + 0.03
+    assert rec.load_poses(rec.poses_path(config))['bin']['xyz'][2] < before[2]
+
+
 def test_show_and_delete_need_no_robot(tmp_path, capsys):
     config = tmp_path / 'pose_pick.yaml'
     assert rec.main(['--show', '--config', str(config)]) == 0 and 'No poses recorded' in capsys.readouterr().out
