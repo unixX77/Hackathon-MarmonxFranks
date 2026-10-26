@@ -154,6 +154,16 @@ place_search_tries: 4           # at most this many shifted tries (up to 8) befo
 # frame, +y = to the robot's left). Set 2026-10-26 on request: 40 cm in +y. Only a NEW row reads this: a started row keeps its own
 # (--reset starts again). --start-offset DX DY overrides it for one row. Not used with --anchor.
 palletize_start_offset: [0.0, 0.40]
+# The BAD row (label B), from the same first pick: 10 cm closer to the robot (x -0.10) and the same 40 cm to the left. Good and bad bricks
+# are given as  --brick X Y Z A G  /  --brick X Y Z A B  (capital letters; G = good, B = bad).
+palletize_bad_start_offset: [-0.10, 0.40]
+# How the palletizer puts a brick down (pose_pick_palletize.py). 'drop' (set 2026-10-26 on request, the stud-seating place was not
+# reliable): go over the slot, come down to the 4 cm stop and nudge x, y by the measured hand position, go straight down to
+# palletize_drop_height above the seat, let go and move on; nothing is pressed or searched. 'press' seats the brick on the studs
+# (first brick searches the stud cell, see the README).
+palletize_place_mode: drop
+palletize_drop_height: 0.001    # m above the seat where the brick is let go (0.001 = 1 mm; the studs stand 1.7 mm)
+palletize_drop_fine: false      # true: also stop 8 mm up and align again before the drop (slower, a few tenths of a mm better)
 # The first brick of a row (no anchor): the plate's studs are unknown, so a brick that sits on top of them is tried again at
 # place_first_search_rings rings of place_first_search_step around the aligned position, middle outwards (4 x 1 mm each way = 81 spots,
 # about 3.5 s each, a whole 8 mm stud cell), and the row is taken from where it seats. Later bricks use place_search_tries.

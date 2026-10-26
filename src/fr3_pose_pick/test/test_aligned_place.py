@@ -259,3 +259,52 @@ def test_the_release_angle_is_recorded():
     m = mission()
     m.place_brick()
     assert m.release_yaw_deg == pytest.approx(0.0)
+
+
+# ------------------------------------------------------------------------------------------------ drop mode
+def drop_mission(**kwargs):
+    m = mission(**kwargs)
+    m.drop_height = 0.001
+    return m
+
+
+def test_the_drop_goes_straight_down_to_one_millimetre_above_the_seat_and_lets_go():
+    m = drop_mission()
+    seat = m.place_plan()['grip'][2]
+    m.place_brick()
+    labels = [entry[0] for entry in m.mover.log]
+    assert 'Lower the brick to the fine height' not in labels and 'Lift and shift to try again' not in labels
+    drop = [entry for entry in m.mover.log if entry[0] == 'Lower the brick to the drop height']
+    assert len(drop) == 1 and drop[0][1][2] == pytest.approx(seat + 0.001)
+    assert labels[-3:] == ['Lower the brick to the drop height', 'Back off straight up'] or labels[-2:] == ['Lower the brick to the drop height', 'Back off straight up']
+    assert m.mover.opened == 1 and m.mover.detached == 1 and m.place_trace['drop_height_mm'] == pytest.approx(1.0)
+
+
+def test_a_brick_that_does_not_find_its_studs_is_still_let_go_and_the_run_moves_on():
+    """Press mode would stop here (blocked 2.7 mm up); the drop just opens the hand."""
+    m = drop_mission(extra={'Lower the brick to the drop height': (3.0, 3.0, 0.0)})          # the studs are 4 mm from where it lands
+    m.place_brick()
+    assert m.mover.opened == 1 and not m.blocked
+
+
+def test_the_drop_height_follows_the_rows_measured_seat():
+    m = drop_mission()
+    m.seat_z = m.place_plan()['grip'][2] + 0.0015
+    m.place_brick()
+    drop = [entry for entry in m.mover.log if entry[0] == 'Lower the brick to the drop height'][0]
+    assert drop[1][2] == pytest.approx(m.seat_z + 0.001)
+
+
+def test_the_fine_stop_can_be_switched_on_for_the_drop():
+    m = drop_mission(config={'palletize_drop_fine': True})
+    m.drop_fine = True
+    m.place_brick()
+    steps = [entry[0] for entry in m.mover.log]
+    assert 'Lower the brick to the fine height' in steps and steps.index('Lower the brick to the fine height') < steps.index('Lower the brick to the drop height')
+    assert m.mover.opened == 1
+
+
+def test_without_a_drop_height_the_press_place_is_unchanged():
+    m = mission()
+    m.place_brick()
+    assert [e[0] for e in m.mover.log].count('Lower the brick to the place pose') == 1 and m.drop_height is None

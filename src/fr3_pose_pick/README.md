@@ -267,6 +267,27 @@ same config, so every locked value (grasp height, centring, place height, grasp 
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
 
+## Palletizing now drops the brick and sorts good from bad (2026-10-26 18:20)
+
+Seating bricks on the studs was not reliable (the plate's studs are unknown to the robot), so `pose_pick_palletize.py` now puts a brick
+down the simple way (`palletize_place_mode: drop`, the default): over the slot, down to 4 cm, nudge x and y by the measured hand
+position, straight down to `palletize_drop_height` (1 mm) above the seat, let go, next brick. No press, no search, no blocked check;
+a brick may rest on top of its studs. `palletize_place_mode: press` is the stud-seating place of before (first brick searches the stud
+cell, later bricks search 2 rings, the anchor mode). The "Place pose ... release with the hand at z=-0.0008" line of the printout is the
+press model and does not apply to a drop; the line of the brick header says "drop 1.0 mm above the seat".
+
+Every brick carries a capital letter, **G = good, B = bad**:
+
+    ros2 run fr3_pose_pick pose_pick_palletize.py --config src/fr3_pose_pick/config/pose_pick.yaml \
+        --brick X1 Y1 Z1 A1 G --brick X2 Y2 Z2 A2 B --brick X3 Y3 Z3 A3 G
+
+(the letter is required in a batch, so a forgotten one cannot sort silently; the single form takes `--label G|B`, default G). Good
+bricks go to the good row, 40 cm to the robot's left of the first pick (`palletize_start_offset`); bad bricks to the bad row, the same
+40 cm and 10 cm closer to the robot (`palletize_bad_start_offset: [-0.10, 0.40]`). Both rows hang from the same reference, the hand's
+measured position at the very first grasp, so they line up whichever label comes first. Each row keeps its own state file
+(`pose_pick_palletize.json` for G, `pose_pick_palletize_bad.json` for B) and every row grows along +y, 32 mm per brick.
+`--status` shows both, `--reset` forgets both, `--shift DX DY --label B` moves one row.
+
 ## Incremental palletizing: `pose_pick_palletize.py`
 
 Same autonomous machinery as `pose_pick_auto.py` (no questions, countdown, every safety check, gripper width confirms the grasp), but

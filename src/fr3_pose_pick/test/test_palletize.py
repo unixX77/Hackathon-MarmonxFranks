@@ -88,7 +88,7 @@ class Capture:
     def __init__(self, fail_on=None, hand=(0.4395, -0.0192), grasp_yaw=2.4, release_yaw=1.7):
         self.calls, self.fail_on, self.hand, self.countdowns = [], fail_on, hand, []
         self.anchors, self.seat_zs, self.grasp_yaw, self.release_yaw, self.wides = [], [], grasp_yaw, release_yaw, []
-        self.rings = []
+        self.rings, self.drops, self.labels, self.refs = [], [], [], []
 
     def __call__(self):
         self.calls.append(list(sys.argv[1:]))
@@ -100,6 +100,9 @@ class Capture:
         self.seat_zs.append(cls.seat_z)
         self.wides.append(cls.wide)
         self.rings.append(cls.rings)
+        self.drops.append(cls.drop)
+        self.labels.append(cls.label)
+        self.refs.append(cls.ref)
         mission.release_yaw_deg = self.release_yaw
         mission.grasp_pick = np.array([0.4263, -0.0056, 0.0002])           # the hand's measured pose at the grasp
         mission.grasp_hand_yaw_deg = self.grasp_yaw
@@ -112,21 +115,25 @@ class Capture:
 
 @pytest.fixture
 def run(monkeypatch, tmp_path):
-    def go(argv, capture=None):
+    def go(argv, capture=None, mode=None):
         capture = capture or Capture()
         monkeypatch.setattr(pp, 'main', capture)
         monkeypatch.setattr(auto, 'countdown_input', lambda seconds: capture.countdowns.append(seconds) or builtins.input)
         path = str(tmp_path / 'row.json')
-        code = pal.main(['--config', str(CONFIG_PATH), '--state', path] + argv)
+        config = CONFIG_PATH
+        if mode is not None:                                                   # 'press': the stud-seating place of the earlier version
+            config = tmp_path / f'{mode}.yaml'
+            config.write_text(yaml.safe_dump(dict(CONFIG, palletize_place_mode=mode)))
+        code = pal.main(['--config', str(config), '--state', path] + argv)
         return code, capture
     return go
 
 
-def test_the_first_brick_is_set_down_relative_to_its_own_pick(run, tmp_path):
-    code, capture = run(['--camera-xyz', '0.087692', '-0.041569', '0.261043', '--camera-angle', '-86.4'])
+def test_the_first_brick_is_set_down_relative_to_its_own_pick_and_the_press_mode_searches(run, tmp_path):
+    code, capture = run(['--camera-xyz', '0.087692', '-0.041569', '0.261043', '--camera-angle', '-86.4'], mode='press')
     assert code == 0
     argv = capture.calls[0]
-    assert argv[:3] == ['--config', str(CONFIG_PATH), '--camera-xyz'] and '--no-inspect' in argv and '--no-step' in argv
+    assert argv[0] == '--config' and argv[2] == '--camera-xyz' and '--no-inspect' in argv and '--no-step' in argv
     assert argv[argv.index('--place-offset'):argv.index('--place-offset') + 3] == [
         '--place-offset', f'{CONFIG["palletize_start_offset"][0]:.6f}', f'{CONFIG["palletize_start_offset"][1]:.6f}']
     assert CONFIG['palletize_start_offset'] == [0.0, 0.40]
@@ -152,9 +159,9 @@ def test_every_next_brick_goes_to_the_next_slot_along_y(run, tmp_path):
 
 def test_several_bricks_in_one_command_fill_consecutive_slots(run, tmp_path):
     code, capture = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0', '--countdown', '9',
-                         '--brick', '0.0877', '-0.0416', '0.2610', '-86.4',
-                         '--brick', '0.0900', '-0.0300', '0.2600', '-85.0',
-                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0'])
+                         '--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G',
+                         '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'G',
+                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0', 'G'])
     assert code == 0 and len(capture.calls) == 3
     assert [call[call.index('--camera-xyz') + 1] for call in capture.calls] == ['0.087700', '0.090000', '0.085000']
     assert all('--ee-pose' in call for call in capture.calls)
@@ -167,11 +174,11 @@ def test_several_bricks_in_one_command_fill_consecutive_slots(run, tmp_path):
 
 def test_a_failure_stops_the_batch_and_the_row_keeps_what_is_down(run, tmp_path, capsys):
     code, capture = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0',
-                         '--brick', '0.0877', '-0.0416', '0.2610', '-86.4', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0',
-                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0'], Capture(fail_on=2))
+                         '--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'G',
+                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0', 'G'], Capture(fail_on=2))
     assert code == 1 and len(capture.calls) == 2                                             # the third brick was never started
     err = capsys.readouterr().err
-    assert 'STOPPED at brick 2 of 3' in err and 'already in the row: 1' in err and 'still there' in err
+    assert 'STOPPED at brick 2 of 3' in err and 'already down: good 1, bad 0' in err and 'still there' in err
     assert len(pal.load_state(tmp_path / 'row.json')['placed']) == 1
 
 
@@ -181,7 +188,7 @@ def test_a_failure_stops_the_batch_and_the_row_keeps_what_is_down(run, tmp_path,
     (['--pallet'], 'decides where each brick goes'),
     (['--place-layers', '2'], 'decides where each brick goes'),
     (['--step'], 'brings a question back'),
-    (['--brick', '1', '2', '3', '4', '--camera-xyz', '0', '0', '0.3'], 'use one way'),
+    (['--brick', '1', '2', '3', '4', 'G', '--camera-xyz', '0', '0', '0.3'], 'use one way'),
     (['--start-offset', '0', '0.02', '--camera-xyz', '0', '0', '0.3'], 'clear of the stack'),
 ])
 def test_bad_commands_are_refused_before_anything_starts(run, extra, message, capsys):
@@ -284,8 +291,8 @@ def test_several_bricks_use_the_arm_pose_the_command_started_with(run, monkeypat
         seen.append(pp.lookup_hand(None, None, {}))
         return original_call(self)
     monkeypatch.setattr(Capture, '__call__', call)
-    code, _ = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', '--brick', '0.09', '-0.03', '0.26', '-85',
-                   '--brick', '0.085', '-0.05', '0.262', '-87'], capture)
+    code, _ = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.09', '-0.03', '0.26', '-85', 'B',
+                   '--brick', '0.085', '-0.05', '0.262', '-87', 'G'], capture)
     assert code == 0 and len(seen) == 3
     assert all(pose is seen[0] for pose in seen) and seen[0][0, 0] == 1.0                    # read once, shared by all three
     assert pp.lookup_hand.__name__ == '<lambda>'                                             # and put back afterwards
@@ -295,8 +302,8 @@ def test_with_an_ee_pose_the_lookup_is_left_alone(run, monkeypatch):
     marker = lambda node, buffer, c, seconds=10.0: 'real'          # noqa: E731
     monkeypatch.setattr(pp, 'lookup_hand', marker)
     capture = Capture()
-    code, _ = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0', '--brick', '0.0877', '-0.0416', '0.2610', '-86.4',
-                   '--brick', '0.09', '-0.03', '0.26', '-85'], capture)
+    code, _ = run(['--ee-pose', '0.33', '-0.055', '0.22', '1', '0', '0', '0', '--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G',
+                   '--brick', '0.09', '-0.03', '0.26', '-85', 'G'], capture)
     assert code == 0 and pp.lookup_hand is marker
 
 
@@ -334,7 +341,7 @@ def test_the_anchor_angle_is_a_line_between_minus_90_and_90(run, tmp_path, yaw, 
 
 
 @pytest.mark.parametrize('extra, message', [
-    (['--brick', '1', '2', '3', '4'], 'anchor is the brick'),
+    (['--brick', '1', '2', '3', '4', 'G'], 'anchor is the brick'),
     (['--camera-xyz', '0', '0', '0.3'], 'anchor is the brick'),
     (['--start-offset', '0', '0.1'], 'leave out --start-offset'),
     (['--row-yaw', '3'], 'leave out --start-offset'),
@@ -373,28 +380,28 @@ def test_an_old_row_file_without_the_new_fields_still_loads(tmp_path):
 
 # ------------------------------------------------------------------- the first brick finds its own seat
 def test_every_row_brick_searches_in_rings_the_first_the_whole_cell_and_an_anchor_not_at_all(run, tmp_path):
-    code, capture = run(PICK)
+    code, capture = run(PICK, mode='press')
     assert capture.wides == [True] and capture.rings == [None] and capture.anchors == [False]    # the whole cell
-    code, capture = run(PICK)                                                                # slot 2: the row is known to ~1 mm
+    code, capture = run(PICK, mode='press')                                                  # slot 2: the row is known to ~1 mm
     assert capture.wides == [True] and capture.rings == [2]
-    code, capture = run(['--reset'] + ANCHOR)
+    code, capture = run(['--reset'] + ANCHOR, mode='press')
     assert capture.wides == [False] and capture.anchors == [True]                            # an anchor is already seated
 
 
 def test_every_seated_brick_refines_where_the_row_is(run, tmp_path):
     """17:55: slot 1 seated 0.7 mm one way, slot 2 3 tries on: the hand is up to ~0.5 mm off the grid point when a brick drops in."""
-    run(PICK, Capture(hand=(0.4000, -0.0200)))                                               # slot 1 seated with the hand here
+    run(PICK, Capture(hand=(0.4000, -0.0200)), mode='press')                                 # slot 1 seated with the hand here
     state = pal.load_state(tmp_path / 'row.json')
     assert state['origin'] == [0.4, -0.02]
     capture = Capture(hand=(0.4010, -0.0188))                                                # slot 2 seated 1.0 mm / 1.2 mm off the multiple
-    run(PICK, capture)
+    run(PICK, capture, mode='press')
     state = pal.load_state(tmp_path / 'row.json')
     # the Capture adds 0.032 per brick already down, so the second sample is (0.401, -0.0188 + 0.032 - 0.032)
     assert state['origin'] == pytest.approx([0.4005, -0.0194], abs=1e-5)                     # the mean of the two
     assert [e['slot'] for e in state['placed']] == [1, 2]
-    run(['--reset'] + ANCHOR)
+    run(['--reset'] + ANCHOR, mode='press')
     state = pal.load_state(tmp_path / 'row.json')
-    run(PICK, Capture(hand=(0.5, 0.5)))
+    run(PICK, Capture(hand=(0.5, 0.5)), mode='press')
     assert pal.load_state(tmp_path / 'row.json')['origin'] == state['origin']                # an anchor's origin is exact: not averaged
 
 
@@ -419,3 +426,107 @@ def test_the_far_start_and_the_window_for_it():
     with pytest.raises(ValueError, match='outside the allowed window'):
         pp.plan_place(CONFIG, 0.44, CONFIG['workspace_y'][1] + 0.01, 0.0)
     assert far > 0
+
+
+# ------------------------------------------------------------------------------------------- drop mode, good and bad
+def test_the_drop_mode_is_the_default_and_nothing_is_searched(run, tmp_path):
+    code, capture = run(PICK)
+    assert code == 0 and capture.drops == [pytest.approx(0.001)] and capture.wides == [False]
+    code, capture = run(PICK, mode='press')
+    assert capture.drops == [None]                                                           # the stud-seating place of before
+
+
+def test_the_anchor_itself_is_never_dropped(run, tmp_path):
+    code, capture = run(ANCHOR)
+    assert capture.drops == [None] and capture.anchors == [True]                             # it is put back exactly where it was
+    code, capture = run(PICK)
+    assert capture.drops == [pytest.approx(0.001)]                                           # the bricks after it are dropped
+
+
+def test_the_mode_and_the_drop_height_are_checked_before_anything_moves():
+    assert pal.check_mode(CONFIG) == pytest.approx(0.001)
+    assert pal.check_mode(dict(CONFIG, palletize_place_mode='press')) is None
+    assert pal.check_mode(dict(CONFIG, palletize_drop_height=0.0)) == 0.0
+    for bad in (dict(CONFIG, palletize_place_mode='slam'), dict(CONFIG, palletize_drop_height=0.02),
+                dict(CONFIG, palletize_drop_height=-0.001), dict(CONFIG, palletize_drop_height='1mm')):
+        with pytest.raises(ValueError, match='palletize_'):
+            pal.check_mode(bad)
+
+
+def test_labels_are_capital_letters_and_required_for_a_batch():
+    assert pal.parse_brick(['0.09', '-0.04', '0.26', '-86.4', 'G']) == (0.09, -0.04, 0.26, -86.4, 'G')
+    assert pal.parse_brick(['0.09', '-0.04', '0.26', '-86.4', 'b'])[4] == 'B'                # a small letter is understood
+    for bad, message in ((['0.09', '-0.04', '0.26', '-86.4'], 'AND a label'), (['0.09', '-0.04', '0.26', '-86.4', 'X'], 'G \\(good\\) or B'),
+                         (['0.09', '-0.04', '0.26', '-86.4', 'G', 'G'], 'AND a label'), (['a', '-0.04', '0.26', '-86.4', 'G'], 'numbers')):
+        with pytest.raises(ValueError, match=message):
+            pal.parse_brick(bad)
+    bricks, rest = pal.extract_bricks(['--x', '1', '--brick', '0.09', '-0.04', '0.26', '-86.4', 'B', '--brick', '1', '2', '3', '4', 'G', '--y'])
+    assert [b[4] for b in bricks] == ['B', 'G'] and rest == ['--x', '1', '--y']
+
+
+def test_a_batch_with_a_missing_label_is_refused_before_anything_moves(run, capsys):
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4'])
+    assert code == 2 and not capture.calls and 'AND a label' in capsys.readouterr().err
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'Q'])
+    assert code == 2 and not capture.calls and 'G (good) or B (bad)' in capsys.readouterr().err
+    code, capture = run(PICK + ['--label', 'Q'])
+    assert code == 2 and not capture.calls
+
+
+def test_good_and_bad_bricks_go_to_two_rows_hung_from_the_first_pick(run, tmp_path, capsys):
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'B',
+                         '--brick', '0.0850', '-0.0500', '0.2620', '-87.0', 'G', '--brick', '0.0800', '-0.0400', '0.2610', '-88.0', 'B'])
+    assert code == 0 and capture.labels == ['G', 'B', 'G', 'B']
+    first, second, third, fourth = capture.calls
+    assert first[first.index('--place-offset') + 1:first.index('--place-offset') + 3] == ['0.000000', '0.400000']    # relative to the first pick
+    ref = [0.4263, -0.0056]                                                                  # the hand's measured grasp of that first brick
+    place = second.index('--place')
+    assert (float(second[place + 1]), float(second[place + 2])) == pytest.approx((ref[0] - 0.10, ref[1] + 0.40))    # the bad row: 10 cm closer
+    good, bad = pal.load_state(tmp_path / 'row.json'), pal.load_state(tmp_path / 'row_bad.json')
+    assert [e['label'] for e in good['placed']] == ['G', 'G'] and [e['label'] for e in bad['placed']] == ['B', 'B']
+    assert good['ref'] == pytest.approx(ref) and bad['ref'] == pytest.approx(ref)             # one reference for the whole layout
+    # the third brick is the second good one: one pitch along +y in the good row; the fourth the second bad one in the bad row
+    assert float(third[third.index('--place') + 2]) == pytest.approx(good['origin'][1] + 0.032)
+    assert float(fourth[fourth.index('--place') + 2]) == pytest.approx(bad['origin'][1] + 0.032)
+    out = capsys.readouterr().out
+    assert 'Plan: 1=G (good), 2=B (bad), 3=G (good), 4=B (bad)' in out and '[B = BAD]: bad row slot 2' in out
+
+
+def test_a_bad_brick_can_be_the_first_one_ever_and_the_good_row_still_hangs_from_it(run, tmp_path):
+    code, capture = run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'B', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'G'])
+    assert code == 0 and capture.labels == ['B', 'G']
+    first, second = capture.calls
+    assert first[first.index('--place-offset') + 1:first.index('--place-offset') + 3] == ['-0.100000', '0.400000']   # the bad row's own offset
+    place = second.index('--place')
+    assert (float(second[place + 1]), float(second[place + 2])) == pytest.approx((0.4263, -0.0056 + 0.40))        # the good row: 40 cm to the left
+    assert pal.load_state(tmp_path / 'row_bad.json')['ref'] == pytest.approx([0.4263, -0.0056])
+
+
+def test_a_single_brick_takes_its_label_from_the_option(run, tmp_path):
+    code, capture = run(PICK + ['--label', 'b'])
+    assert code == 0 and capture.labels == ['B'] and (tmp_path / 'row_bad.json').exists() and not (tmp_path / 'row.json').exists()
+    code, capture = run(PICK)
+    assert capture.labels == ['G'] and (tmp_path / 'row.json').exists()                      # no label: good
+
+
+def test_a_label_and_a_batch_are_not_mixed(run, capsys):
+    code, capture = run(['--brick', '0.1', '0', '0.26', '-86', 'G', '--label', 'B'])
+    assert code == 2 and 'use one way' in capsys.readouterr().err and not capture.calls
+
+
+def test_the_status_shows_both_rows_and_reset_forgets_both(run, tmp_path, capsys):
+    run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'B'])
+    capsys.readouterr()
+    run(['--status'])
+    out = capsys.readouterr().out
+    assert '--- G: GOOD bricks' in out and '--- B: BAD bricks' in out and out.count('NEXT') == 2
+    code, capture = run(['--reset'])
+    assert code == 0 and not (tmp_path / 'row.json').exists() and not (tmp_path / 'row_bad.json').exists()
+
+
+def test_the_shift_moves_the_row_of_the_label(run, tmp_path):
+    run(['--brick', '0.0877', '-0.0416', '0.2610', '-86.4', 'G', '--brick', '0.0900', '-0.0300', '0.2600', '-85.0', 'B'])
+    good, bad = pal.load_state(tmp_path / 'row.json')['origin'], pal.load_state(tmp_path / 'row_bad.json')['origin']
+    run(['--shift', '0.002', '0', '--label', 'B'])
+    assert pal.load_state(tmp_path / 'row.json')['origin'] == good
+    assert pal.load_state(tmp_path / 'row_bad.json')['origin'] == pytest.approx([bad[0] + 0.002, bad[1]])

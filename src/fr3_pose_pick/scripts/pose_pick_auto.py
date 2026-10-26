@@ -76,6 +76,8 @@ class AutoMission(pp.Mission):
 
     stage_pick = grasp_pick = truth_target = release_hand = seat_z = release_yaw_deg = None      # filled in by the run
     search_wide = False            # a row brick: look for the studs in rings around the aligned position (see search_pattern)
+    drop_height = None             # 'drop' mode (palletizing): let go this far above the seat, no press and no search
+    drop_fine = False              # drop mode: still stop 8 mm up and align again before dropping
     search_rings = None            # how many rings of place_first_search_step (None: place_first_search_rings, the whole 8 mm cell)
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
     TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up')
@@ -242,7 +244,10 @@ class AutoMission(pp.Mission):
         press it in, let go, back off."""
         fine_height = float(self.c.get('place_fine_height', 0.008))
         where = self.place_plan()
-        if self.seat_z is not None:           # the row's seat height, measured on the anchor brick, not the model's
+        if self.drop_height is not None:      # drop mode: hover drop_height above the seat and let go, nothing is pressed in
+            seat = float(self.seat_z) if self.seat_z is not None else where['grip'][2]
+            pp.apply_nudge(where, 0.0, 0.0, 0.0, seat + float(self.drop_height) - where['release'][2], self.AUTO_KEYS)
+        elif self.seat_z is not None:         # the row's seat height, measured on the anchor brick, not the model's
             lift = float(self.seat_z) + float(self.c.get('place_margin', 0.0)) - where['release'][2]
             if abs(lift) > 0.004:
                 raise RuntimeError(f'The measured seat height of the row is {lift * 1000:+.1f} mm from the model: more than 4 mm '
@@ -258,18 +263,28 @@ class AutoMission(pp.Mission):
         self.go('Lower the brick to the alignment height', where['inspect'], where['yaw'])
         coarse = self.align_at(where, 'inspect', target - drift, 'coarse', float(self.c.get('place_align_tolerance', 0.001)),
                                int(self.c.get('place_align_tries', 2)), float(self.c.get('place_align_max', 0.008)))
-        self.go('Lower the brick to the fine height', where['fine'], where['yaw'])
-        fine = self.align_at(where, 'fine', target - drift * ahead, 'fine', float(self.c.get('place_fine_tolerance', 0.0003)),
-                             int(self.c.get('place_fine_tries', 3)), float(self.c.get('place_fine_max', 0.004)))
-        self.place_trace.update({'drift_mm': [round(float(v) * 1000, 2) for v in drift],
-                                 'coarse_left_mm': round(coarse * 1000, 2), 'fine_left_mm': round(fine * 1000, 2)})
-        where = self.lower_for_release(where)
+        self.place_trace.update({'drift_mm': [round(float(v) * 1000, 2) for v in drift], 'coarse_left_mm': round(coarse * 1000, 2)})
+        if self.drop_height is not None and not self.drop_fine:
+            # straight down to drop_height above the seat and let go: whatever the studs do, the brick is down, on to the next one
+            self.go('Lower the brick to the drop height', where['release'], where['yaw'])
+            self.place_trace['drop_height_mm'] = round(float(self.drop_height) * 1000, 2)
+        else:
+            self.go('Lower the brick to the fine height', where['fine'], where['yaw'])
+            fine = self.align_at(where, 'fine', target - drift * ahead, 'fine', float(self.c.get('place_fine_tolerance', 0.0003)),
+                                 int(self.c.get('place_fine_tries', 3)), float(self.c.get('place_fine_max', 0.004)))
+            self.place_trace['fine_left_mm'] = round(fine * 1000, 2)
+            if self.drop_height is not None:
+                self.go('Lower the brick to the drop height', where['release'], where['yaw'])
+                self.place_trace['drop_height_mm'] = round(float(self.drop_height) * 1000, 2)
+            else:
+                where = self.lower_for_release(where)
         self.release_hand = np.array(self.mover.hand_pose()[:3, 3], dtype=float)
         import smooth_motion as sm
         self.release_yaw_deg = math.degrees(sm.hand_yaw(self.mover.hand_pose()[:3, :3]))
         self.mover.hand()                       # open: the brick stays where it is
         self.mover.detach_block()
-        self.say(f'Brick released with the hand {np.hypot(*(self.release_hand[:2] - target)) * 1000:.2f} mm from its target')
+        self.say(f'Brick {"dropped" if self.drop_height is not None else "released"} with the hand '
+                 f'{np.hypot(*(self.release_hand[:2] - target)) * 1000:.2f} mm from its target')
         if self.on_placed is not None:
             self.on_placed()                    # before the back-off: the slot is taken even if the back-off fails
         self.go('Back off straight up', where['above'], where['yaw'])
