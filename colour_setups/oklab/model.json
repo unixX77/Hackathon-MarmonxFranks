@@ -1,0 +1,97 @@
+{
+  "features": [
+    "hue",
+    "L_rel",
+    "chroma_rel"
+  ],
+  "classes": [
+    "red",
+    "dark_red",
+    "dark_orange",
+    "medium_nougat",
+    "reddish_brown"
+  ],
+  "feature_mean": [
+    36.82659581080378,
+    0.5762929359215568,
+    0.10546135448566714
+  ],
+  "feature_scale": [
+    10.489786967277858,
+    0.14806470963166013,
+    0.055945988848161696
+  ],
+  "class_means": [
+    [
+      -1.006938495100157,
+      0.8925728171855212,
+      1.5912072128519072
+    ],
+    [
+      -0.9981529083060062,
+      -0.29774824366805286,
+      -0.7794411716627895
+    ],
+    [
+      0.6649975295944441,
+      0.3257137741852926,
+      0.44725444752590593
+    ],
+    [
+      1.1110533745894755,
+      0.1357954804284915,
+      -0.20342411960464246
+    ],
+    [
+      0.45973355375367564,
+      -1.1013200952957551,
+      -1.0632406416521825
+    ]
+  ],
+  "covariance": [
+    [
+      0.22515713909433752,
+      -0.06674539527523084,
+      0.03478692512366932
+    ],
+    [
+      -0.06674539527523084,
+      0.5640883771459247,
+      -0.10728633249033952
+    ],
+    [
+      0.03478692512366932,
+      -0.10728633249033952,
+      0.11736919562347377
+    ]
+  ],
+  "threshold": 0.7,
+  "colour_space": "oklab",
+  "trained_on": "/home/slolla/Documents/marmon/data/brick_dataset_extracted",
+  "samples": 224,
+  "class_counts": {
+    "medium_nougat": 40,
+    "reddish_brown": 41,
+    "dark_orange": 48,
+    "dark_red": 51,
+    "red": 44
+  },
+  "measurement": {
+    "erosion_fraction": 0.12,
+    "min_pixels": 80
+  },
+  "evaluation": {
+    "random 5-fold (optimistic: near-duplicate frames on both sides)": {
+      "colour_accuracy": 0.9241071428571429,
+      "quality_accuracy": 0.9285714285714286,
+      "confident_fraction": 0.9241071428571429,
+      "confident_colour_accuracy": 0.9516908212560387
+    },
+    "one lighting condition held out (pessimistic: lighting tied to colour)": {
+      "colour_accuracy": 0.6785714285714286,
+      "quality_accuracy": 0.6875,
+      "confident_fraction": 0.8794642857142857,
+      "confident_colour_accuracy": 0.6954314720812182
+    }
+  }
+}

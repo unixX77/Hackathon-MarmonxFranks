@@ -159,7 +159,7 @@ class ColourModel:
 
 # ---------------------------------------------------------------- training
 
-def load_dataset(root, erosion_fraction, min_pixels):
+def load_dataset(root, erosion_fraction, min_pixels, colour_space="cielab"):
     lighting_path = root / 'lighting_suggestions.csv'
     lighting = ({row['sample_id']: row['lighting'] for row in csv.DictReader(lighting_path.open())}
                 if lighting_path.exists() else {})
@@ -177,7 +177,7 @@ def load_dataset(root, erosion_fraction, min_pixels):
                'size_wh': list(rect[1])}
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         gains, _ = base.estimate_white_balance(rgb, [box])
-        _, lab = base.corrected_lab(rgb, gains)
+        _, lab = base.corrected_lab(rgb, gains, colour_space)
         median, *_ = base.measure_box(lab, box, erosion_fraction, min_pixels)
         samples.append({'id': entry['id'], 'colour': entry['color'],
                         'lighting': lighting.get(entry['id'], 'unknown'),
@@ -227,6 +227,7 @@ def main():
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument('--dataset', type=Path, default=Path('data/brick_dataset_extracted'))
     parser.add_argument('--out', type=Path, default=Path('classifier/colour_model.json'))
+    parser.add_argument('--colour-space', choices=['cielab', 'oklab'], default='cielab')
     parser.add_argument('--threshold', type=float, default=DEFAULT_THRESHOLD,
                         help='minimum class probability for a high-confidence prediction')
     parser.add_argument('--erosion-fraction', type=float, default=.12)
@@ -234,7 +235,7 @@ def main():
     args = parser.parse_args()
     from sklearn.model_selection import LeaveOneGroupOut, StratifiedKFold
 
-    samples = load_dataset(args.dataset.resolve(), args.erosion_fraction, args.min_pixels)
+    samples = load_dataset(args.dataset.resolve(), args.erosion_fraction, args.min_pixels, args.colour_space)
     if not samples:
         raise SystemExit(f'No usable samples in {args.dataset}')
     features = np.array([s['features'] for s in samples])
@@ -253,6 +254,7 @@ def main():
 
     model = ColourModel.fit(features, labels, args.threshold)
     model.payload.update({
+        'colour_space': args.colour_space,
         'trained_on': str(args.dataset.resolve()), 'samples': len(samples),
         'class_counts': dict(Counter(labels.tolist())),
         'measurement': {'erosion_fraction': args.erosion_fraction, 'min_pixels': args.min_pixels},

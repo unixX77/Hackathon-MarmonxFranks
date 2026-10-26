@@ -60,9 +60,26 @@ def estimate_white_balance(rgb, boxes):
     return gains.astype(np.float32), np.round(table_rgb, 2).tolist()
 
 
-def corrected_lab(rgb, gains):
+def corrected_lab(rgb, gains, colour_space="cielab"):
     corrected = np.clip(rgb.astype(np.float32) * gains, 0, 255).astype(np.uint8)
-    return corrected, cv2.cvtColor(corrected, cv2.COLOR_RGB2LAB)
+    if colour_space == 'cielab':
+        return corrected, cv2.cvtColor(corrected, cv2.COLOR_RGB2LAB)
+    if colour_space != 'oklab':
+        raise ValueError(f'Unknown colour space: {colour_space}')
+    # sRGB -> linear RGB -> Oklab (Björn Ottosson's published matrices).
+    srgb = corrected.astype(np.float64) / 255.0
+    linear = np.where(srgb <= 0.04045, srgb / 12.92, ((srgb + 0.055) / 1.055) ** 2.4)
+    lms = linear @ np.array([
+        [0.4122214708, 0.5363325363, 0.0514459929],
+        [0.2119034982, 0.6806995451, 0.1073969566],
+        [0.0883024619, 0.2817188376, 0.6299787005]]).T
+    oklab = np.cbrt(lms) @ np.array([
+        [0.2104542553, 0.7936177850, -0.0040720468],
+        [1.9779984951, -2.4285922050, 0.4505937099],
+        [0.0259040371, 0.7827717662, -0.8086757660]]).T
+    # Shared measurement/features use L on 0..255 and neutral a,b at 128.
+    # Keep float precision; these encoded coordinates are not CIELAB values.
+    return corrected, oklab * 255.0 + [0.0, 128.0, 128.0]
 
 
 def measure_box(lab, box, erosion_fraction, min_pixels):
@@ -171,7 +188,14 @@ def classify_result(top_boxes_path, output_root, args):
     rgb = np.asarray(Image.open(rgb_path).convert('RGB'))
     boxes = payload['boxes']
     gains, table_rgb = estimate_white_balance(rgb, boxes)
-    corrected_rgb, lab = corrected_lab(rgb, gains)
+    model_path = getattr(args, 'colour_model', None)
+    model = None
+    colour_space = 'cielab'
+    if model_path:
+        from colour_model import ColourModel
+        model = ColourModel.load(model_path)
+        colour_space = model.payload.get('colour_space', 'cielab')
+    corrected_rgb, lab = corrected_lab(rgb, gains, colour_space)
     features, measurements = [], []
     for box in boxes:
         median, q25, q75, pixels = measure_box(
@@ -185,7 +209,7 @@ def classify_result(top_boxes_path, output_root, args):
         # Learned model: table-relative features replace the per-frame Lab offset.
         from colour_model import ColourModel, colour_features, table_lightness
         table_l = table_lightness(lab, boxes)
-        predictions, scene_transform = ColourModel.load(model_path).classify(
+        predictions, scene_transform = model.classify(
             [colour_features(median, table_l) for median in features], features)
         offset = [0.0, 0.0, 0.0]
     elif features:
@@ -196,7 +220,7 @@ def classify_result(top_boxes_path, output_root, args):
         predictions, offset, scene_transform = [], [0.0, 0.0, 0.0], None
     quality_boxes = []
     for box, measurement, prediction in zip(boxes, measurements, predictions):
-        quality_boxes.append({**box, **prediction, **measurement})
+        quality_boxes.append({**box, **prediction, **measurement, 'colour_space': colour_space})
     result, comparison = render(rgb, quality_boxes)
 
     dataset = payload.get('dataset', 'dataset')
@@ -209,6 +233,8 @@ def classify_result(top_boxes_path, output_root, args):
     output_payload = {
         'strategy': 'learned-colour-model-v1' if model_path else 'robust-lab-prototype-v1',
         'colour_model': str(model_path) if model_path else None,
+        'colour_space': colour_space,
+        'coordinate_encoding': 'L*255, a*255+128, b*255+128' if colour_space == 'oklab' else 'OpenCV uint8 Lab',
         'segmentation_source': str(top_boxes_path),
         'rgb': str(rgb_path),
         'dataset': dataset,
