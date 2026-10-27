@@ -62,6 +62,9 @@ def check_auto_settings(c):
     transit = c.get('transit_velocity_scale')
     if transit is not None and (isinstance(transit, bool) or not isinstance(transit, (int, float)) or not 0 < transit <= 0.2):
         raise ValueError('transit_velocity_scale must be a fraction of the full speed, above 0 and at most 0.2 (0.1 is 10 %)')
+    fast = c.get('fast_velocity_scale')
+    if fast is not None and (isinstance(fast, bool) or not isinstance(fast, (int, float)) or not 0 < fast <= 0.3):
+        raise ValueError('fast_velocity_scale must be a fraction of the full speed, above 0 and at most 0.3 (0.2 is 20 %)')
     fine = float(c.get('place_fine_height', 0.008))
     if not 0.004 <= fine < float(c.get('inspect_height', 0.04)):
         raise ValueError('place_fine_height must be from 4 mm (clear of the studs) to below inspect_height (metres: 0.008 is 8 mm)')
@@ -83,6 +86,11 @@ class AutoMission(pp.Mission):
     # moves that are far from the brick and the plate: these run at transit_velocity_scale, the approach and the press at velocity_scale
     TRANSIT = ('Hover above the brick', 'Lift the brick', 'Carry the brick above the place pose', 'Back off straight up',
                'Carry the brick to the bin pose', 'Carry the brick above the bin', 'Back off from the bin')
+    # ... and of those, the travel high above everything runs at fast_velocity_scale when it is set (the way down to the brick and the
+    # place keep velocity_scale). The moves STRAIGHT UP keep transit_velocity_scale: at 20 % 'Back off straight up' and go_to_pose's
+    # straight-up line failed three times on 2026-10-27 17:41 (execution failed, also right after error_recovery: going up fast
+    # against gravity), while every sideways and downward 20 % move and every upward 10 % move worked
+    FAST = ('Hover above the brick', 'Carry the brick above the place pose', 'Carry the brick to the bin pose', 'Carry the brick above the bin')
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -132,7 +140,9 @@ class AutoMission(pp.Mission):
         """Mission.go, with the far-away moves (TRANSIT) at transit_velocity_scale and, if given, another limit for
         'stopped short of the target'. The slow approach and the press keep velocity_scale."""
         normal = getattr(self.mover, 'scale', None)
-        if label in self.TRANSIT and normal is not None and self.c.get('transit_velocity_scale') is not None:
+        if label in self.FAST and normal is not None and self.c.get('fast_velocity_scale') is not None:
+            self.mover.scale = max(normal, float(self.c['fast_velocity_scale']))
+        elif label in self.TRANSIT and normal is not None and self.c.get('transit_velocity_scale') is not None:
             self.mover.scale = max(normal, float(self.c['transit_velocity_scale']))
         kept = self.c.get('blocked_height')
         if blocked_height is not None:
@@ -406,8 +416,9 @@ def parse_own(argv, default_place=True):
                 seconds = int(value)
             except ValueError:
                 raise ValueError(f'--countdown must be a whole number of seconds (3 to 60), not {value!r}') from None
-            if not 3 <= seconds <= 60:
-                raise ValueError('--countdown must be 3 to 60 seconds: time to reach the e-stop, not so long that it is forgotten')
+            if not (seconds == 0 or 3 <= seconds <= 60):
+                raise ValueError('--countdown must be 3 to 60 seconds (time to reach the e-stop, not so long that it is forgotten), '
+                                 'or 0 for none (sort_pile.py: the operator started the whole run)')
         else:
             rest.append(arg)
         i += 1

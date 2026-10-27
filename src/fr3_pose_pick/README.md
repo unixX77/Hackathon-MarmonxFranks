@@ -1,5 +1,10 @@
 # fr3_pose_pick: pose-driven pick and place (no vision)
 
+For the current `sort_pile.py --review codex` application, which combines this package's
+motion code with `project-main` perception, see the
+[pile-sorting technical documentation](../../SORT_PILE_DOCUMENTATION.md).
+The introduction below describes the original standalone pose-input workflow.
+
 You give the poses, the arm does the rest. Nothing here looks for the brick: no camera, no detection,
 no simulated brick. The camera-based pipeline is the sibling package `fr3_visual_pick`.
 
@@ -266,6 +271,75 @@ same config, so every locked value (grasp height, centring, place height, grasp 
   or pass `--ee-pose X Y Z QX QY QZ QW`. One brick per run; with `--pallet` each run takes the next free slot.
 - After a fresh checkout run `colcon build` (or `ln -s` the script into `install/fr3_pose_pick/lib/fr3_pose_pick/`); it is in
   the install list of `CMakeLists.txt`.
+
+## Emptying the whole pile: `sort_pile.py` (2026-10-27)
+
+One command, no publisher or listener: look from the recorded `observe` pose, move the top layer (`pose_pick_stacks.py`, or
+`--mode row` for the good row), go back to `observe`, look again, until the pile is empty:
+
+    ros2 run fr3_pose_pick sort_pile.py --config src/fr3_pose_pick/config/pose_pick.yaml --review codex
+
+Bricks the camera missed are seen again in the next round; when a layer is gone the next picture shows the one below. It stops DONE
+after `--empty-scans` (2) pictures in a row with no brick, and stops at once on any failure, when only colours without a stack are left,
+or after `--max-rounds` (40). Bricks seen on a colour stack's footprint (or outside `pile_area`, if set) are never picked. The moves to
+`observe` are `go_to_pose.py observe` (also usable alone, with any recorded pose). The layer of each round comes from the pipeline's own
+height above the plate (`--layers N` for the pick script), not the base-frame height, which slopes 1-2 deg with the hand-eye result (a
+layer-2 brick read 2.73 layers and was grasped above, 16:49). A failed pick is RECOVERED (unless a brick is still in the hand): the
+Franka `error_recovery` action clears the red light, then the next round goes back to `observe` and looks again; a brick that fails
+twice is left alone, `--max-failures` (3) in a row stops the run. Moves to: straight up first if lower, then one straight line,
+at the recorded hand angle itself (the camera is on the hand). `--dry-run` looks once and prints the pick command without picking.
+
+## Sorting by colour into stacks: `pose_pick_stacks.py` / `stack_listener.py` (2026-10-27)
+
+The same as palletizing, but every good brick goes onto the stack of ITS COLOUR instead of a row (bad bricks still go to the bin):
+
+    ros2 run fr3_pose_pick stack_listener.py --config src/fr3_pose_pick/config/pose_pick.yaml       # instead of palletize_listener.py
+    ros2 run fr3_pose_pick pose_pick_stacks.py --config src/fr3_pose_pick/config/pose_pick.yaml --status   # or --reset
+
+Each stack's centre is recorded with the arm (hand pointing down over the middle of the stack, then `record_pose.py stack_red --config
+...`: its x, y is the centre, the height does not matter) or set in `colour_stacks: {red: [x, y], ...}` (colour names as the pipeline
+prints them; a good colour with no stack is left on the pile and said so; a colour in both is refused). A layer is `stack_side_by_side` (3, along base y) x `stack_end_to_end` (2, along
+base x) bricks, long sides along base x, `stack_gap` (16 mm, 2 studs) between neighbours both ways: 80 x 80 mm. When it is full the next
+layer goes straight on top, up to `stack_max_layers`. Each brick is let go with the hand at `palletize_row_drop_z` + (layer - 1) x
+(9.6 mm + `stack_layer_gain`): a dropped brick rests on the studs, so a layer stands a stud higher than the model (gain 1.7 mm). The
+stacks are remembered in `pose_pick_stacks.json`; a stack's centre is fixed once a brick is on it. `palletize_listener.py` and
+`pose_pick_palletize.py` are unchanged; the stack listener refuses to start while another listener is on the topic.
+
+## A camera error is fixed in the base frame: `camera_offset_base` (2026-10-27 11:40)
+
+`tcp_correction_hand` is in the HAND frame and turns with the hand. The along value had gone -13.0 -> -19.5 mm by eye with the hand
+at yaw 0 (6.5 mm toward the robot); the first lattice brick, picked at yaw -89, then missed by ~7 mm toward a finger: the 6.5 mm had
+turned with the hand into base +y, and the error it fixed, in base x, came back across the brick. That error is in the camera
+conversion (the hand-eye result is rejected, ~3 mm / 0.9 deg), so it went to `camera_offset_base: [-0.0065, 0.0]` (metres, base
+frame, added to every camera point) and the hand value back to -13.0. A correction found by eye at ONE hand angle cannot tell the two
+apart: check it on bricks at 0 and 90 deg; what stays the same in base x / y belongs in `camera_offset_base`, what turns with the hand
+in `tcp_correction_hand`.
+
+11:50: the next brick at 90 deg was grasped at hand yaw +89 (the hand takes whichever of +-89 is nearer), the rest of the hand value
+turned the other way and one finger landed on each neighbouring brick, 16.7 mm across from where a base-frame correction puts it. So
+ALL of it is now in `camera_offset_base: [-0.0195, -0.0040]` and `tcp_correction_hand: [0, 0]`: at yaw 0 the hand goes exactly where
+it went before, and at +-90 the same base offset is used whichever way the hand turns.
+
+## Camera pipeline -> topic -> palletizer (2026-10-27)
+
+`brick_publisher.py` runs project-main's `run_pipeline_classifier.sh` and publishes the bricks it finds on `/brick_poses`;
+`palletize_listener.py` turns every message into one `pose_pick_palletize.py` run. Three terminals, all from project-ameed with
+`source ~/hackathon_repo/env.sh && source install/setup.bash`:
+
+    ros2 launch fr3_pose_pick pose_bringup.launch.py robot_ip:=192.168.3.10                         # 1: robot + MoveIt
+    ros2 run fr3_pose_pick palletize_listener.py --config src/fr3_pose_pick/config/pose_pick.yaml   # 2: waits for bricks
+    ros2 run fr3_pose_pick brick_publisher.py --config src/fr3_pose_pick/config/pose_pick.yaml --review codex   # 3: per picture
+
+- The publisher reads the hand pose from TF before and after the pipeline; if the arm moved (1 mm, 0.5 deg) nothing is published.
+  That pose goes into the message and the listener passes it as `--ee-pose`, so the arm may be anywhere when the run starts.
+- Options the publisher does not know go to the pipeline (`--review codex`, `--second-opinion codex`, `--recording DIR --frame N`; an
+  old recording needs `--ee-pose`). `--pipeline` is the script (default `~/Documents/Hackathon/project-main/run_pipeline_classifier.sh`).
+- The message is a `std_msgs/String` with JSON: `ee_pose` [x y z qx qy qz qw] and `bricks`, each with `camera_xyz`, `angle_deg` and
+  `label` G (good) / B (bad) from the classifier's quality. A brick with neither good nor bad is left out and said so.
+- The listener does one message at a time and STOPS when a run fails, like `pose_pick_palletize.py`; start it again after looking.
+  `--once` does one message, `--dry-run` only prints the command, options after `--` go to `pose_pick_palletize.py` (`-- --countdown 10`).
+- Start the listener first: the publisher waits `--wait` (30 s) for it, and a message nobody hears is lost, never replayed.
+- Take the next picture with the arm back at a picture pose after the run: the bricks of the stack below need a new picture.
 
 ## Closing the hand gently first, and recording what closing does (2026-10-26 20:20)
 

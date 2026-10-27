@@ -19,3 +19,4 @@ pose_pick_palletize_bad.json
 
 # git worktrees of Claude Code sessions live here: never record them (a git add . once stored them as embedded repositories)
 .claude/worktrees/
+pose_pick_stacks.json

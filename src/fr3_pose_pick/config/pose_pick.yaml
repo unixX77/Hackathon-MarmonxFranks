@@ -20,7 +20,7 @@ max_hover_z: 0.55               # highest the hand may go while hovering above t
 # ---- Grasp ------------------------------------------------------------------------------
 # TCP height above the table at the grasp. The fingertip ends are ~9 mm below the TCP, so a
 # TCP lower than ~10 mm above the table would put them in the table.
-grasp_tcp_height: 0.017          # LOCKED 2026-10-26 on the baseplate with the new tips: tips touch at z=-0.0005, grasp at +0.0002; the place height follows it
+grasp_tcp_height: 0.021          # 0.017 -> 0.019 2026-10-27: on the 9-layer lattice the tips (0.7 mm above the brick's bottom) came down on the 1.7 mm studs of layer 8 under the gaps; now 1.3 mm above them. LOCKED 2026-10-26 on the baseplate with the new tips: tips touch at z=-0.0005, grasp at +0.0002; the place height follows it
 min_tcp_above_table: 0.010
 # The gripper TIPS: how far the lowest point of the tips is below the hand point (fr3_hand_tcp), and how much
 # room to keep above the surface. The grasp is refused if grasp_tcp_height is lower than the sum (the tips
@@ -50,7 +50,7 @@ scene_table_sink: 0.0035
 # Other bricks stand right next to the pick spot, so the hand only opens a hair wider than the brick
 # (short side 16 mm): open 19 mm, close 15 mm. Change them here, not on the command line.
 grasp_width: 0.015              # close to this on the brick (the real hand checks it closed on something)
-open_width: 0.019               # open to this: 1.5 mm per side around a 16 mm brick (0.017 -> 0.018 on 25 Oct, 0.019 on 26 Oct 18:57 after a finger
+open_width: 0.021               # open to this: 1.5 mm per side around a 16 mm brick (0.017 -> 0.018 on 25 Oct, 0.019 on 26 Oct 18:57 after a finger
                                 # landed on the brick), so the hand must be lined up to about 1.5 mm sideways and in yaw
 min_open_clearance: 0.001       # smallest open_width - brick short side the config check accepts (default 5 mm)
 # Optional: open the hand wider for the PICK descent only (null = open_width). The jaws then land on both sides of the
@@ -75,14 +75,33 @@ blocked_sideways: 0.0035
 # all across, so the across value is the rough one. Keep using the inspection stop, then refine with
 #   measure_grasp_offset.py --last 5 --apply <this file>
 # (the corrections you still type are added to this value). The earlier values are in git history.
-tcp_correction_hand: [-0.0130, 0.0065]   # LOCKED 2026-10-26 (x -3.0 mm, y -0.5 mm at the stop); across 0.0045 -> 0.0065 at 18:40 on request:
-                                # the fingers hit the brick when picking; across +2 mm is base y -2 mm for a hand at yaw 0
-grasp_force: 40.0                # N. Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
+tcp_correction_hand: [0.0, 0.0]   # 2026-10-27 11:50: [-0.0130, 0.0040] moved to camera_offset_base (see there). LOCKED 2026-10-26 (x -3.0 mm, y -0.5 mm at the stop); across 0.0045 -> 0.0065 at 18:40 on request:
+                                # the fingers hit the brick when picking; across +2 mm is base y -2 mm for a hand at yaw 0.
+                                # 2026-10-27: across 0.0065 -> 0.0050 on request (base y +1.5 mm, the robot's left / the operator's right)
+                                # 2026-10-27: along -0.0130 -> -0.0195 on request (base x -6.5 mm at yaw 0, toward the robot base),
+                                #   moved to camera_offset_base at 11:40: a brick at hand yaw -89 then missed by ~7 mm across (base x)
+                                # 2026-10-27: across 0.0050 -> 0.0030 on request (base y +2 mm, the operator's right; 2nd brick of a batch missed)
+# An error of the CAMERA conversion (hand-eye result, rejected, ~3 mm / 0.9 deg) is fixed in the BASE frame, whatever the hand's angle:
+# [dx, dy] metres added to every camera point once it is in the base frame (pick and --place-camera-xyz; not --pose / --place).
+# At hand yaw 0 it acts like tcp_correction_hand [dx, -dy]; at yaw 90 the hand correction turns with the hand and this does not.
+camera_offset_base: [-0.02005, -0.0025]   # 2026-10-27 11:50: ALL of the correction, found by eye at hand yaw 0 (pictures from hand z 0.21).
+# 2026-10-27: dy -0.0040 -> -0.0030 on request (1 mm to the operator's right, bricks vertical)
+# 2026-10-27: dy -0.0030 -> -0.0020 on request (1 mm more to the operator's right: a finger hit the brick)
+# 2026-10-27: dy -0.0020 -> -0.0025 on request (0.5 mm to the operator's left, 2nd brick of a batch)
+# 2026-10-27: dx -0.0195 -> -0.0205 on request (horizontal bricks, grasped at hand yaw -88 to -90, where the hand's +y is base -x:
+#   the finger on the hand's +y side was the closer one, and closing shifted the hand +1.0 to +1.5 mm that way at 12:48-12:49)
+#   That made it WORSE (that finger even closer): the sign was wrong. dx -0.0205 -> -0.01805 on request (+2.45 mm, base +x).
+#   For horizontal bricks (hand yaw ~ -89) the hand's +y IS base -x (so "the +y finger is too close" means move base +x).
+#   dx -0.01805 -> -0.01905 (before 16:41) and -0.01905 -> -0.02005 (16:55) on request: +1 mm toward the hand's +y each.
+# 11:40 it held only -6.5 mm x and the hand kept [-0.0130, 0.0040]: bricks near 90 deg are grasped at hand yaw -89 or +89 (whichever is
+# nearer), which turns a hand-frame correction 178 deg: 11:35 (yaw -89) missed ~7 mm across, 11:45 (yaw +89) put one finger on each
+# neighbouring brick, 16.7 mm across from where a base-frame correction puts it. Same as before at yaw 0, and no flip at 90.
+grasp_force: 40.0                # N; 40 -> 50 2026-10-27: a stud-seated brick slipped out during the lift (fingers 15.9 -> 0.4 mm). Pulls a seated 2x4 off the baseplate (about 10-25 N of stud grip) through finger friction (2 x mu x force); the Franka Hand is rated 70 N. If the printed tips flex or the brick creaks, go down in steps of 5 N.
 gripper_speed: 0.02
 # Closing in two stages (2026-10-26 20:20, on request: one finger seemed to push the brick). The two fingers are driven together and move
 # equally; the hand lands 1-2 mm off the middle of the brick, so the first finger to touch shoves it, harder since the grip went to 40 N.
 # So: first close slowly (grasp_speed) with only grasp_force_first, wait grasp_settle, then grip with grasp_force. null = one stage.
-grasp_force_first: 8.0          # N
+grasp_force_first: null         # N; 8.0 -> null 2026-10-27: the second Grasp on an already-held brick fails (gripper log)
 grasp_speed: 0.01               # m/s for closing (opening keeps gripper_speed)
 grasp_settle: 0.3               # s between the two stages
 # What the gripper reports once the hand has closed. The Franka Hand has NO force sensor (its effort reads 0): the finger
@@ -90,7 +109,7 @@ grasp_settle: 0.3               # s between the two stages
 # change by more than hold_check_tolerance between the grasp and the end of the lift (a dropped brick lets the fingers close).
 # pose_pick_auto.py stops on it; pose_pick.py only prints a warning.
 grasp_check_tolerance: 0.003
-hold_check_tolerance: 0.001
+hold_check_tolerance: 0.002     # 0.001 -> 0.002 2026-10-27: at 50 N a brick still held read 15.8 -> 14.6 mm after the lift (a drop reads ~0)
 # Smooth motion: the planner's joint points wobble (the elbow drifts back and forth by several milliradians while the
 # hand stays on the line), which made the arm jerk. true = keep the hand on exactly the same line but remove the wobble and
 # move at one constant speed with smooth starts and stops (checked before every move; if the check fails the old timing
@@ -102,7 +121,8 @@ sim_speed_scale: 0.1            # fake hardware only
 
 # ---- Reliability limits (pose_pick.py refuses instead of improvising) --------------------
 max_tilt_deg: 20                # the hand must already point down within this angle at the start
-max_joint_swing: 1.5            # refuse any single straight-line move that turns one of joints 1-6 more (rad)
+max_joint_swing: 1.8            # refuse any single straight-line move that turns one of joints 1-6 more (rad). 1.5 -> 1.8 2026-10-27:
+                                # from the bin (x 0.72, far out) to a brick near the robot (x 0.35) the elbow (joint 4) turns 1.51 rad
 max_wrist_swing: 2.2            # joint 7 (wrist) may turn more: a 90 degree hand yaw is already ~1.6 rad
 inspect_height: 0.04            # stop this far above the grasp height so you can check the offset
 max_nudge_step: 0.010           # one correction: at most 10 mm ...
@@ -125,8 +145,10 @@ table_check_tolerance: 0.008    # refuse when the converted top face is further 
 # within layer_snap_tolerance of one, else used as measured. Bias: in your real runs the converted top face of a
 # brick lying on the table came out 0.7 to 7.1 mm too high, 3.7 mm on average over 8 runs (spread 1.8 mm), partly
 # the studs (about 1.7 mm). Re-measure it with a few picks of a brick on the table if the camera setup changes.
-camera_height_bias: 0.0037
-layer_snap_tolerance: 0.003     # within this of a whole layer (m): use the exact layer height
+camera_height_bias: 0.0         # 0.0037 -> 0.0 2026-10-27: pictures from hand z 0.32-0.49 read the top face -1.0, -0.6 (table) and
+                                # +1.6 mm (layer 9 of a lattice) from the true layer; 3.7 mm pushed them out of the snap range
+layer_snap_tolerance: 0.004     # within this of a whole layer (m): use the exact layer height. 0.003 -> 0.004 2026-10-27: the top of the
+                                # 9-layer lattice read 2.3 to 3.2 mm low (12:02-12:10), so 3.2 mm missed the snap and the grip went 3.2 mm lower
 max_brick_top_above_table: 0.12 # a top face higher than this above the table is refused (m)
 # Your teammate's brick angle (--camera-angle) means: the angle of the brick's LONG side in the image, degrees, from
 # the image's right toward the image's down (clockwise on the screen). If his number means something else, fix
@@ -187,6 +209,36 @@ place_first_search_rings: 4
 place_first_search_step: 0.001
 place_row_search_rings: 2        # the next row bricks: this many rings of the same step (2 x 1 mm each way = 25 spots) around the aim
 
+# ---- Stacks by colour (pose_pick_stacks.py / stack_listener.py) ----------------------------------------------------------------------
+# Every good brick goes onto the stack of its colour: long sides along base x, stack_side_by_side bricks next to each other (along y) x
+# stack_end_to_end bricks end to end (along x) per layer, stack_gap between neighbours both ways, then the next layer straight on top.
+# 3 x 2 with a 16 mm gap is 80 x 80 mm per stack. The stacks are checked against the workspace and each other before anything moves.
+colour_stacks: {}                # {colour: [x, y]}: the centre of each colour's stack, base frame, metres, e.g.
+                                 #   colour_stacks: {red: [0.42, 0.25], dark_red: [0.42, 0.36], dark_orange: [0.52, 0.25]}
+                                 # colour names as the pipeline prints them; a good colour with no stack is left on the pile.
+                                 # Or RECORD them: hand over a stack's centre, record_pose.py stack_<colour> (poses.yaml; x, y used)
+pile_area: null                  # sort_pile.py: only bricks inside [[x min, x max], [y min, y max]] (base frame, m) are picked (null: anywhere
+                                 # but on a colour stack). Or RECORD it: the hand over two opposite corners of the pile area,
+                                 # record_pose.py pile_corner_1 and pile_corner_2 (then keep this null)
+stack_side_by_side: 3            # bricks next to each other in a layer (along base y)
+stack_end_to_end: 2              # bricks end to end in a layer (along base x)
+stack_gap: 0.016                 # m between neighbouring bricks, both ways (2 studs; the fingers go in there)
+stack_max_layers: 6
+stack_layer_gain: 0.0017         # m added to the release height per layer above the first. A dropped brick rests ON the studs below (it is let
+                                 # go 0.6 mm above them on the plate with grasp_tcp_height 0.021), so each layer stands a stud (1.7 mm) higher
+                                 # than the model: without this the bricks of layer 2 would come down 1.1 mm into the studs of layer 1.
+                                 # 0.0 if the layers are pressed in (by hand, or palletize_place_mode: press).
+
 # Autonomous speed: moves far from the brick and the plate (hover, lift, carry, back off) run at this fraction of the full joint
 # speed; the approach to the brick, the alignment and the press keep velocity_scale. At most 0.2 (the arm is carrying a brick).
 transit_velocity_scale: 0.10
+# 2026-10-27: the travel high above everything (hover over the brick, carry to the place / bin, go_to_pose.py's line) at this
+# fraction instead; every move straight UP (the lift, the back-offs, go_to_pose's climb) keeps transit_velocity_scale (fast, they
+# failed: 17:41), the way down to the brick and the place velocity_scale.
+# At most 0.3. Delete the line for the old speeds.
+fast_velocity_scale: 0.20
+# Waits (2026-10-27, made shorter for sort_pile.py): ros_discovery_wait is how long every run looks for the other ROS nodes before it
+# checks that only ONE robot stack is running (was 5 s per brick; on this one computer the nodes are found well within 1 s);
+# arrival_settle is the pause after each move before the hand's real position is read for the arrival check (was 0.5 s, ~8 per brick).
+ros_discovery_wait: 1.0
+arrival_settle: 0.25

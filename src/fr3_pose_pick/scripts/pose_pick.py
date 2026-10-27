@@ -459,12 +459,19 @@ def resolve_camera_target(c, t_base_hand, t_hand_cam, xyz, quat, long_axis, use_
     info (a dict, optional) is filled with what was decided, for the log."""
     from camera_frame import camera_point_to_base, camera_yaw_to_base
     top = camera_point_to_base(t_base_hand, t_hand_cam, xyz)
+    shift = c.get('camera_offset_base') or [0.0, 0.0]
+    if len(shift) != 2 or max(abs(float(v)) for v in shift) > 0.03:
+        raise ValueError('camera_offset_base must be [dx, dy] in METRES, at most 3 cm each (0.002 is 2 mm)')
+    if any(shift):
+        top = top + np.array([float(shift[0]), float(shift[1]), 0.0])   # an error of the camera conversion: fixed in the base frame
     tol = c.get('table_check_tolerance', 0.008)
     height = c['block_size'][2]
     bias = float(c.get('camera_height_bias', 0.0))
     top_z = float(top[2]) - bias
     n, residual, levels = nearest_layer(c, top_z)
     where = f'{label}: camera point {list(xyz)} -> base frame x={top[0]:.4f} y={top[1]:.4f} z={top[2]:.4f}'
+    if any(shift):
+        where += f' (camera_offset_base dx={float(shift[0]) * 1000:+.1f} dy={float(shift[1]) * 1000:+.1f} mm included)'
     if bias:
         where += f' (camera height calibration {-bias * 1000:+.1f} mm -> z={top_z:.4f})'
     layer_used = None
@@ -597,7 +604,7 @@ class Mission:
         watch_blocked (the final lowering): a hand that stopped short of the target, or was pushed aside, is blocked by
         something (a finger on the brick, the tips on the plate or studs, a neighbour): raise Blocked instead of going on."""
         commanded = self.mover.move(label, xyz, yaw=self.plan['yaw'] if yaw is None else yaw)
-        self.spin(0.5)
+        self.spin(float(self.c.get('arrival_settle', 0.5)))
         hand = self.mover.hand_pose()[:3, 3]
         err = hand - np.array(commanded if commanded is not None else xyz)
         xy, z = math.hypot(err[0], err[1]), float(err[2])
@@ -982,7 +989,7 @@ def main():
     buffer = Buffer(cache_time=Duration(seconds=30))
     listener = TransformListener(buffer, node)         # keep a reference alive
     try:
-        end = time.monotonic() + 5.0                   # DDS discovery can take a few seconds: do not
+        end = time.monotonic() + float(c.get('ros_discovery_wait', 5.0))   # DDS discovery can take a few seconds: do not
         while time.monotonic() < end and 'sim_gripper' not in node.get_node_names():   # mistake a slow start for a real robot
             rclpy.spin_once(node, timeout_sec=0.1)
         doubled = duplicate_stack_nodes(name for name, _ in node.get_node_names_and_namespaces())

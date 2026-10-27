@@ -1,9 +1,56 @@
 # Poses recorded with record_pose.py (hand = fr3_hand_tcp in fr3_link0, metres and degrees). Do not edit by hand
 # unless you know what you are doing: record the pose again instead.
 bin:
-  xyz: [0.51282, -0.25234, 0.0908]
-  quat_xyzw: [-0.99931, 0.02865, -0.01045, 0.02105]
-  yaw_deg: -3.309
-  tilt_deg: 2.693
-  spread_mm: 0.009
-  recorded: '2026-10-26 18:56:43'
+  xyz: [0.72287, -0.0093, 0.23156]
+  quat_xyzw: [-0.99986, 0.01599, 0.00353, 0.0026]
+  yaw_deg: -1.831
+  tilt_deg: 0.503
+  spread_mm: 0.011
+  recorded: '2026-10-27 11:24:35'
+  xyz_recorded: [0.72287, -0.0093, 0.28156]
+  nudges:
+  - {time: '2026-10-27 17:28:22', dx: 0.0, dy: 0.0, dz: -0.02}
+  - {time: '2026-10-27 17:28:22', dx: 0.0, dy: 0.0, dz: -0.02}
+  - {time: '2026-10-27 17:28:22', dx: 0.0, dy: 0.0, dz: -0.01}
+observe:
+  xyz: [0.35158, -0.15846, 0.37734]
+  quat_xyzw: [-0.99999, -6.0e-05, 0.00034, 0.00364]
+  yaw_deg: 0.007
+  tilt_deg: 0.419
+  spread_mm: 0.004
+  recorded: '2026-10-27 16:47:23'
+stack_red:
+  xyz: [0.48851, 0.17372, 0.02289]
+  quat_xyzw: [-0.99997, -0.00593, 0.00363, 0.00295]
+  yaw_deg: 0.681
+  tilt_deg: 0.536
+  spread_mm: 0.011
+  recorded: '2026-10-27 14:27:10'
+stack_dark_red:
+  xyz: [0.48772, 0.32646, 0.02436]
+  quat_xyzw: [-0.99999, 0.00019, 0.00254, 0.00224]
+  yaw_deg: -0.021
+  tilt_deg: 0.388
+  spread_mm: 0.023
+  recorded: '2026-10-27 14:27:49'
+stack_dark_orange:
+  xyz: [0.32941, 0.17343, 0.02477]
+  quat_xyzw: [-0.99997, -0.00727, 0.0004, 0.00293]
+  yaw_deg: 0.833
+  tilt_deg: 0.339
+  spread_mm: 0.006
+  recorded: '2026-10-27 14:28:26'
+pile_corner_1:
+  xyz: [0.31246, -0.2631, 0.06302]
+  quat_xyzw: [-0.99996, -0.00873, 0.00134, 0.00168]
+  yaw_deg: 1.001
+  tilt_deg: 0.246
+  spread_mm: 0.004
+  recorded: '2026-10-27 16:45:17'
+pile_corner_2:
+  xyz: [0.50745, -0.02659, 0.06251]
+  quat_xyzw: [-0.99997, -0.00606, 0.00385, 0.00152]
+  yaw_deg: 0.695
+  tilt_deg: 0.474
+  spread_mm: 0.031
+  recorded: '2026-10-27 16:46:03'

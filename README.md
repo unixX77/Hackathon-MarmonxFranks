@@ -3,6 +3,10 @@
 FR3 + Franka Hand + wrist RealSense D435 Lego pick and place (ROS 2 Humble). This folder is the
 main workspace: build, simulate and run everything from the repo root.
 
+For the current autonomous pile-sorting command (`sort_pile.py --review codex`), see
+[FR3 pile picking and colour sorting: technical documentation](SORT_PILE_DOCUMENTATION.md).
+It covers the full perception-to-robot workflow, stack, methodology, configuration and operation.
+
 | Path | Contents |
 |---|---|
 | `src/fr3_pose_pick/` | **Pose-based** pick and place, no vision: `pose_pick.py` (`--pose`, `--place`), brick-free simulated hand. You type the poses; no camera, no simulated brick. Self-contained copy: change it freely |
