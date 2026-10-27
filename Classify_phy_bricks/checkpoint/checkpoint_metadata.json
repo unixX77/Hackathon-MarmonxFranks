@@ -1,0 +1,61 @@
+{
+  "approach": "Approach 17: equal-weight late fusion of Approach 5 and Approach 8",
+  "decision_rule": "score_bad = mean(approach5 SVM decision, DINOv2 SVM decision); >= 0 means bad",
+  "uncertainty_margin": 0.3,
+  "uncertainty_rule": "|score_bad| < margin -> uncertain (never an automatic good)",
+  "burst_rule": "median of per-frame fused scores",
+  "approach5_features": "automatic material mask; LAB histograms 12/16/16 bins; 8 gradient/Laplacian/intensity texture statistics (52-d)",
+  "dino_model": "facebook/dinov2-small",
+  "dino_revision": "ed25f3a31f01632728cabb09d1542f84ab7b0056",
+  "dino_features": "masked bounding-box crop, background filled with median material colour; patch-token mean, std, P90 (1152-d); PCA 32 whitened",
+  "selected_C": {
+    "approach5": 0.1,
+    "dinov2": 3.0
+  },
+  "training_images": 258,
+  "training_physical_bricks": 10,
+  "label_mapping": {
+    "good": 0,
+    "bad": 1
+  },
+  "held_out_performance": "see 17_late_fusion_approach5_dinov2_patch/metrics.json",
+  "warning": "Fitted on ten physical bricks photographed on paper. The uncertainty margin was read from the held-out sweep on the same bricks and must be re-selected on RealSense top-surface validation bricks before deployment.",
+  "dino_bundled_directory": "dinov2_small",
+  "status": "official baseline",
+  "baseline_since": "2026-10-25",
+  "replaces": "Approach 5 (approach_results/05_approach_checkpoint, kept unchanged as the previous baseline)",
+  "evaluated_performance": {
+    "leave_one_brick_out": {
+      "image_accuracy": 0.822,
+      "images_correct": "212/258",
+      "bad_image_recall": 0.752,
+      "bad_image_precision": 0.926,
+      "bricks_correct": "9/10",
+      "good_bricks_rejected": "0/4",
+      "bad_bricks_accepted": "1/6 (Brick_6_bad)"
+    },
+    "brick_disjoint_splits_with_brick6": {
+      "splits": 24,
+      "train_accuracy": 0.945,
+      "validation_accuracy": 0.861,
+      "test_accuracy": 0.819
+    },
+    "brick_disjoint_splits_brick6_set_aside": {
+      "splits": 20,
+      "train_accuracy": 0.998,
+      "validation_accuracy": 0.891,
+      "test_accuracy": 0.855
+    },
+    "previous_baseline_approach5_for_comparison": {
+      "leave_one_brick_out_image_accuracy": 0.795,
+      "splits_with_brick6_test_accuracy": 0.807
+    }
+  },
+  "known_limitations": [
+    "Brick_6_bad is never detected (colour matches the good-brick target red).",
+    "Lead over Approach 5 is 1-3 points and not statistically significant on ten bricks (McNemar p = 0.21).",
+    "Large train-test gap: the model memorises training bricks; validate on new physical bricks.",
+    "Trained on photographs on white paper, not RealSense top-surface crops.",
+    "GrabCut masks are randomly initialised; recomputed scores can differ by up to about 0.2 from cached-feature scores."
+  ]
+}

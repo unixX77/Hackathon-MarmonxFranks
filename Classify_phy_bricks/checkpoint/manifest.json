@@ -1,0 +1,14 @@
+{
+  "approach": "Approach 17",
+  "policy": "review_band_175_120",
+  "files": {
+    "approach5_svm.joblib": "9dcd7e9e3c7fff9382c6f9472a4d2cbb6680b67a3899dc95d55d1187e56da5dc",
+    "dinov2_patch_svm.joblib": "ef842144751b88f4362b3ce44afd62d3cf82e8d19d797fc5bd64c1f7afd6e47a",
+    "checkpoint_metadata.json": "8a149245ab5c0f539f6cd83c2e6f9571eda99ca5d787ab66880ffc0eba85136b"
+  },
+  "dinov2_model": "facebook/dinov2-small",
+  "dinov2_revision": "ed25f3a31f01632728cabb09d1542f84ab7b0056",
+  "dinov2_model_safetensors_sha256": "ae1e99fcefd534ed978cdeb8326f08030c96e28b7a81ffcbc98a857c84d14be1",
+  "sam3_model": "facebook/sam3",
+  "sam3_revision": "3c879f39826c281e95690f02c7821c4de09afae7"
+}
