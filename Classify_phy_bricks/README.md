@@ -36,6 +36,8 @@ The classifier does not calculate robot poses or issue robot commands.
   output for a single image; `--selection multi` supports up to ten instances.
 - `prepare_dataset_masks.py` and `evaluate_dataset.py`: reproduce an offline
   run on the labeled `Brick_N_good` / `Brick_N_bad` photo folders.
+- `train_classifier.py`: extract the two feature sets and retrain both SVM
+  branches, with optional leave-one-physical-brick-out evaluation.
 - `remote_server.py` and `remote_client.py`: persistent SSH inference on the
   lab computer with a two-panel Mac camera viewer.
 - `checkpoint/`: the two small, trained Approach 17 SVMs and original training
@@ -141,6 +143,31 @@ python Classify_phy_bricks/evaluate_dataset.py \
 You may instead supply an existing matching mask folder. Add
 `--save-overlays` to store classified images. `predictions.csv` contains each
 score; `summary.json` reports good, bad, and uncertain counts by folder.
+
+## Retrain on a labeled dataset
+
+The following trains **new** SVM checkpoints in a separate output directory.
+It uses the supplied masks and a frozen DINOv2 encoder. The feature cache can
+be large, so put it on a spacious disk. Do not use the existing `checkpoint/`
+folder as the output if you want to preserve the supplied baseline.
+
+```bash
+python Classify_phy_bricks/train_classifier.py \
+  --images /path/to/images --masks results/sam3_masks \
+  --output-dir results/retrained_approach17 \
+  --features-cache /path/to/large/cache/brick_features.npz \
+  --evaluate-heldout
+```
+
+Each physical brick must have its own `Brick_N_good` or `Brick_N_bad` folder.
+The optional held-out evaluation leaves one entire brick out and selects SVM
+regularization on training bricks. For comparison with the historical 212/258
+evaluation, it reports a binary threshold at zero; it is not an evaluation of
+the review band. New masks or photos produce new model weights, so retraining
+is not expected to reproduce the supplied frozen checkpoint. Recalibrate and
+test the decision threshold on separate data for the new model and camera.
+Use `--checkpoint results/retrained_approach17` with
+`classify_phy_bricks.py` or `evaluate_dataset.py` to load it.
 
 ## Mac camera → photolab → live viewer
 
