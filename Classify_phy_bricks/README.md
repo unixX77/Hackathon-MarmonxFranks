@@ -1,209 +1,87 @@
-# Classify physical bricks — Approach 17
+# Physical brick classification
 
-This folder packages the frozen physical-brick classifier used in the live
-baseline. SAM3 segments each visible brick; Approach 17 classifies each mask.
-It is separate from the RGB-D LEGO top-layer and robot-pose pipelines.
+Hackathon submission: segment physical bricks with SAM3 and classify each one as **good** or **bad** with the frozen Approach 17 classifier. This package is independent of the repository's LEGO/RGB-D pose pipeline.
 
-## Architecture
+## Pipeline
 
-For each full-frame brick mask, Approach 17 computes two decision scores:
+1. SAM3 produces an individual whole-brick mask for each detected brick (up to ten in a frame).
+2. Approach 5 computes 44 LAB color-histogram and eight texture features from the masked brick, then a trained linear SVM produces a score.
+3. Frozen DINOv2-small produces patch-token features; mean, standard deviation and 90th percentile are reduced by PCA and passed to a second trained linear SVM.
+4. The two SVM decision values are averaged. The **minus_two_binary** policy returns **good / green** for a fused score ≤ −2.0 and **bad / red** for a score > −2.0. There is no review category in this policy.
 
-1. **Approach 5:** 44 LAB color histogram values plus eight image texture
-   values, standardized and passed to a trained linear SVM.
-2. **DINOv2:** the masked crop with its background filled by the median brick
-   color is passed through the frozen DINOv2-small encoder. The mean, standard
-   deviation, and 90th percentile of patch tokens form 1,152 features, followed
-   by the saved PCA, scaler, and trained linear SVM.
+The score is a decision value, not a probability. A crack does not by itself define a bad brick: labels for this dataset are based on color, although the trained model uses color, texture, and learned visual features. This package does not calculate robot poses or command a robot.
 
-The fused `score_bad` is the equal average of the two SVM decision values.
-The current live baseline uses `review_band_175_120`:
+## Included files
 
-| Fused score | Label | Viewer color |
-|---|---|---|
-| ≤ −1.75 | good | green |
-| −1.75 < score ≤ −1.20 | uncertain / review | amber |
-| > −1.20 | bad | red |
+- `classify_phy_bricks.py` — classify one brick from an RGB image and a binary mask.
+- `sam3_inference.py` — segment and classify bricks in a photo; save masks, annotations and JSON.
+- `remote_server.py`, `remote_client.py` — live Mac/remote-computer viewer over SSH.
+- `prepare_dataset_masks.py`, `evaluate_dataset.py`, `train_classifier.py` — prepare masks, evaluate photos and retrain separately.
+- `checkpoint/` — the two trained SVM checkpoints, PCA, and training metadata.
+- `validation_summary_minus_two.json` — saved in-sample photo results for the default policy.
 
-Scores are SVM margins, not probabilities. The `baseline_margin`,
-`zero_binary`, and `minus_two_binary` historical policies are also selectable.
-The classifier does not calculate robot poses or issue robot commands.
+The small trained classifiers are included. The SAM3 and DINOv2 model weights are **not** included and must be downloaded or supplied separately. SAM3 requires Hugging Face access to its gated model and authentication. The pinned models are [`facebook/sam3`](https://huggingface.co/facebook/sam3), revision `3c879f39826c281e95690f02c7821c4de09afae7`, and [`facebook/dinov2-small`](https://huggingface.co/facebook/dinov2-small), revision `ed25f3a31f01632728cabb09d1542f84ab7b0056`. Use a cache with sufficient storage.
 
-## Files and checkpoints
+## Setup
 
-- `classify_phy_bricks.py`: inference from an RGB image and a supplied binary
-  mask, with a callable Python API and optional image overlay.
-- `sam3_inference.py`: SAM3 detection, classification, masks, and annotated
-  output for a single image; `--selection multi` supports up to ten instances.
-- `prepare_dataset_masks.py` and `evaluate_dataset.py`: reproduce an offline
-  run on the labeled `Brick_N_good` / `Brick_N_bad` photo folders.
-- `train_classifier.py`: extract the two feature sets and retrain both SVM
-  branches, with optional leave-one-physical-brick-out evaluation.
-- `remote_server.py` and `remote_client.py`: persistent SSH inference on the
-  lab computer with a two-panel Mac camera viewer.
-- `checkpoint/`: the two small, trained Approach 17 SVMs and original training
-  metadata. These checkpoint files are included in GitHub.
-
-The large encoders are **not** included. They are loaded from a local cache or
-downloaded once from Hugging Face:
-
-| Encoder | Pinned model and revision |
-|---|---|
-| DINOv2 | `facebook/dinov2-small`, `ed25f3a31f01632728cabb09d1542f84ab7b0056` |
-| SAM3 | `facebook/sam3`, `3c879f39826c281e95690f02c7821c4de09afae7` |
-
-The pinned DINOv2 `model.safetensors` is about 85 MB and has SHA-256
-`ae1e99fcefd534ed978cdeb8326f08030c96e28b7a81ffcbc98a857c84d14be1`.
-SAM3 is gated; the user running it needs the required Hugging Face access and
-authentication. See [SAM3](https://huggingface.co/facebook/sam3) and
-[DINOv2-small](https://huggingface.co/facebook/dinov2-small).
-
-## Environment
-
-Python 3.12 and the package versions in `requirements.txt` match the tested
-environment, including the scikit-learn version used to load the joblib
-checkpoints. Install a PyTorch build matching the computer's CPU/CUDA setup;
-the tested lab environment used PyTorch 2.10.0 + CUDA 12.8. Configure a cache
-with enough space before the first model download:
+From the repository root on the inference computer:
 
 ```bash
-python -m venv .venv
+python3.12 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r Classify_phy_bricks/requirements.txt
 export HF_HOME=/path/to/large/cache/huggingface
+hf auth login
 ```
 
-The code chooses CUDA when available; `--device cpu` or `--device cuda` can
-override it. If the exact weights already exist locally, pass `--sam3-model`
-and `--encoder-path` as appropriate, and optionally `--local-files-only`.
+The listed package versions match the environment used to load the saved checkpoints. Select a PyTorch build suitable for the machine's CPU/CUDA environment. After the first download, `--local-files-only` avoids network access. For existing local weights, use `--sam3-model /path/to/sam3` and `--encoder-path /path/to/dinov2_small`.
 
-## Classify a photo using SAM3
-
-Run from the repository root:
+## Run on a photograph
 
 ```bash
 python Classify_phy_bricks/sam3_inference.py \
   --image /path/to/brick_photo.png \
   --output-dir results/physical_bricks \
-  --policy review_band_175_120
+  --policy minus_two_binary
 ```
 
-Results are `annotated.png`, `predictions.json`, and one binary PNG mask per
-detected brick in `masks/`. Each JSON detection contains its score, label,
-component scores, SAM3 confidence, and image-coordinate box. With no reliable
-mask the result has zero detections; it does not force a good/bad label.
-`--selection multi` is the default; `--selection dominant` reproduces the
-single-centered-brick selection used by the offline photo evaluation. SAM3
-may miss or merge touching bricks, so inspect the contour before relying on
-the result.
+The output folder contains `annotated.png`, `predictions.json` and one binary mask per detected brick under `masks/`. The JSON includes the score, label, SAM3 confidence and image-coordinate box. A missing reliable mask produces no detection. SAM3 can miss or merge touching bricks; inspect the masks.
 
-## Classify an existing mask
-
-The mask must have the same width and height as the RGB image; nonzero pixels
-belong to **one** brick. Other segmentation systems can call the classifier
-without loading SAM3:
+To classify an existing full-frame mask without running SAM3:
 
 ```bash
 python Classify_phy_bricks/classify_phy_bricks.py \
   --image /path/to/frame.png --mask /path/to/brick_mask.png \
+  --policy minus_two_binary \
   --output results/prediction.json --overlay results/annotated.png
 ```
 
-```python
-from Classify_phy_bricks.classify_phy_bricks import PhysicalBrickClassifier
+## Live camera over SSH
 
-model = PhysicalBrickClassifier(encoder_path="/path/to/dinov2_small")
-prediction = model.classify(rgb_uint8, one_brick_mask)
-print(prediction["label"], prediction["score_bad"])
-```
-
-Create the model once and call `classify` for each independently segmented
-brick. Invalid or empty masks raise an error instead of being labeled bad.
-
-## Reproduce the 258-photo offline run
-
-The dataset is not included in the repository. Arrange the same labeled images
-under `images/Brick_1_good/`, ..., `images/Brick_10_bad/`. To create masks:
+Run the server and model on the inference computer. On the Mac, clone this branch or copy `Classify_phy_bricks/remote_client.py`, then install the lightweight camera dependencies:
 
 ```bash
-python Classify_phy_bricks/prepare_dataset_masks.py \
-  --images /path/to/images --output-dir results/sam3_masks
-```
-
-This uses the original **dominant** mask-selection heuristic and writes
-`results/sam3_masks/Brick_N_label/masks/<image-stem>.png`. A manifest records
-failures; missing masks are not silently labeled. Then run:
-
-```bash
-python Classify_phy_bricks/evaluate_dataset.py \
-  --images /path/to/images --masks results/sam3_masks \
-  --output-dir results/approach17_evaluation \
-  --policy review_band_175_120
-```
-
-You may instead supply an existing matching mask folder. Add
-`--save-overlays` to store classified images. `predictions.csv` contains each
-score; `summary.json` reports good, bad, and uncertain counts by folder.
-
-## Retrain on a labeled dataset
-
-The following trains **new** SVM checkpoints in a separate output directory.
-It uses the supplied masks and a frozen DINOv2 encoder. The feature cache can
-be large, so put it on a spacious disk. Do not use the existing `checkpoint/`
-folder as the output if you want to preserve the supplied baseline.
-
-```bash
-python Classify_phy_bricks/train_classifier.py \
-  --images /path/to/images --masks results/sam3_masks \
-  --output-dir results/retrained_approach17 \
-  --features-cache /path/to/large/cache/brick_features.npz \
-  --evaluate-heldout
-```
-
-Each physical brick must have its own `Brick_N_good` or `Brick_N_bad` folder.
-The optional held-out evaluation leaves one entire brick out and selects SVM
-regularization on training bricks. For comparison with the historical 212/258
-evaluation, it reports a binary threshold at zero; it is not an evaluation of
-the review band. New masks or photos produce new model weights, so retraining
-is not expected to reproduce the supplied frozen checkpoint. Recalibrate and
-test the decision threshold on separate data for the new model and camera.
-Use `--checkpoint results/retrained_approach17` with
-`classify_phy_bricks.py` or `evaluate_dataset.py` to load it.
-
-## Mac camera → photolab → live viewer
-
-The model and weights remain on the remote machine. The Mac needs only Python,
-OpenCV, NumPy, SSH, and its camera. Clone this repository on the Mac or copy
-`remote_client.py` from the remote checkout. Run the following from the Mac,
-replacing the example remote host, user, and paths with your own:
-
-```bash
-python -m pip install numpy opencv-python
-
+python -m pip install -r Classify_phy_bricks/requirements-mac.txt
 python Classify_phy_bricks/remote_client.py \
-  --host your-lab-host --user your-lab-user \
-  --camera 1 --backend avfoundation --interval 3 --save-frames \
-  --remote-repo '/path/on/lab/Hackathon-MarmonxFranks' \
-  --remote-python '/path/on/lab/env/bin/python' \
-  --remote-hf-home '/path/on/lab/model_cache' --remote-local-files-only
+  --host YOUR_LAB_HOST --user YOUR_LAB_USER \
+  --remote-repo /path/to/Hackathon-MarmonxFranks \
+  --remote-python /path/to/env/bin/python \
+  --remote-hf-home /path/to/large/cache/huggingface \
+  --camera 1 --backend avfoundation --interval 3 \
+  --policy minus_two_binary --save-frames
 ```
 
-Try `--camera 0` if camera 1 is unavailable. Press `q` or Esc to quit. The
-Mac saves frames, `predictions.csv`, and per-frame detection JSON under
-`live_results/<timestamp>/`. For a single known brick, optionally use
-`--truth good` or `--truth bad`; omit it for mixed bricks. Omit
-`--remote-local-files-only` if the remote computer needs to download the
-models after Hugging Face authentication.
+The SSH user must have access to the remote checkout and model cache. When the weights are already present, add `--remote-local-files-only`. Try `--camera 0` if necessary. Press **q** or **Esc** to quit. Frames, per-frame JSON and a CSV are saved in `live_results/<timestamp>/` on the Mac. The live pane and most recent prediction are different points in time.
 
-## Validation and limits
+## Evaluation
 
-Using the saved checkpoint and the 258 existing SAM3 masks, the packaged code
-reproduced the original scores to within 5e-7 and gave **194 correct out of
-215 decided photos**, with **43 uncertain**. These are the same physical
-bricks used to fit the saved model, and the review band was selected on these
-scores: this is an in-sample reproduction, not new-brick or live accuracy.
+The dataset contains **258 photos of 10 physical bricks**: four good and six bad. On the saved photos and SAM3 masks, using the frozen classifier and −2 policy:
 
-The historical leave-one-physical-brick-out result was **212/258 (82.2%)**
-using the original automatic masks and binary decision rule. It is not an
-evaluation of the current SAM3 review policy. See `validation_summary.json`
-for the reproduced offline per-folder counts. New camera conditions and
-new bricks require separate evaluation.
+| Actual | Predicted good | Predicted bad |
+|---|---:|---:|
+| Good photos | 67 | 42 |
+| Bad photos | 9 | 140 |
+
+**207/258 photos (80.2%)** were correct. These physical bricks were used to train the saved model, so this is an **in-sample** result, not accuracy on new bricks or a live camera. See `validation_summary_minus_two.json` for per-brick counts.
+
+A separate historical leave-one-physical-brick-out evaluation obtained **212/258 (82.2%)** image accuracy and **9/10** bricks correct after aggregating multiple photos. It used the original masks and a zero threshold, not this SAM3/−2 pipeline. The dataset is small; test the submitted policy on additional unseen bricks and live camera conditions before relying on it. The earlier review-band results are retained in `validation_summary_review_band.json` for reference.

@@ -105,7 +105,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--sam3-model", default=os.environ.get("SAM3_PATH", SAM3_MODEL))
     parser.add_argument("--encoder-path", default=os.environ.get("DINO_V2_PATH"))
-    parser.add_argument("--policy", choices=POLICIES, default="review_band_175_120")
+    parser.add_argument("--policy", choices=POLICIES, default="minus_two_binary")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
     parser.add_argument("--local-files-only", action="store_true")
     args = parser.parse_args()

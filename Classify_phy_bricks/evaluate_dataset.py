@@ -27,7 +27,7 @@ def main() -> None:
     parser.add_argument("--encoder-path", default=None)
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    parser.add_argument("--policy", choices=POLICIES, default="review_band_175_120")
+    parser.add_argument("--policy", choices=POLICIES, default="minus_two_binary")
     parser.add_argument("--save-overlays", action="store_true")
     args = parser.parse_args()
     folders = [(p, FOLDER.match(p.name)) for p in args.images.iterdir() if p.is_dir()]

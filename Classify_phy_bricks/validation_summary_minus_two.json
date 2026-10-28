@@ -1,0 +1,75 @@
+{
+  "policy": "minus_two_binary",
+  "evaluation": "in-sample: saved model trained on these physical bricks; existing SAM3 masks",
+  "images": 258,
+  "correct": 207,
+  "accuracy": 0.8023255813953488,
+  "confusion_matrix": {
+    "bad_bad": 140,
+    "bad_good": 9,
+    "good_bad": 42,
+    "good_good": 67
+  },
+  "folders": {
+    "Brick_10_bad": {
+      "truth": "bad",
+      "predicted_good": 2,
+      "predicted_bad": 26,
+      "correct": 26
+    },
+    "Brick_1_good": {
+      "truth": "good",
+      "predicted_good": 15,
+      "predicted_bad": 11,
+      "correct": 15
+    },
+    "Brick_2_good": {
+      "truth": "good",
+      "predicted_good": 18,
+      "predicted_bad": 12,
+      "correct": 18
+    },
+    "Brick_3_good": {
+      "truth": "good",
+      "predicted_good": 13,
+      "predicted_bad": 15,
+      "correct": 13
+    },
+    "Brick_4_good": {
+      "truth": "good",
+      "predicted_good": 21,
+      "predicted_bad": 4,
+      "correct": 21
+    },
+    "Brick_5_bad": {
+      "truth": "bad",
+      "predicted_good": 0,
+      "predicted_bad": 25,
+      "correct": 25
+    },
+    "Brick_6_bad": {
+      "truth": "bad",
+      "predicted_good": 1,
+      "predicted_bad": 23,
+      "correct": 23
+    },
+    "Brick_7_bad": {
+      "truth": "bad",
+      "predicted_good": 0,
+      "predicted_bad": 24,
+      "correct": 24
+    },
+    "Brick_8_bad": {
+      "truth": "bad",
+      "predicted_good": 5,
+      "predicted_bad": 19,
+      "correct": 19
+    },
+    "Brick_9_bad": {
+      "truth": "bad",
+      "predicted_good": 1,
+      "predicted_bad": 23,
+      "correct": 23
+    }
+  }
+}

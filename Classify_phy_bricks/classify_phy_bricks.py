@@ -26,7 +26,7 @@ POLICIES = ("review_band_175_120", "minus_two_binary", "zero_binary", "baseline_
 COLORS = {"good": (0, 180, 0), "bad": (0, 0, 225), "uncertain": (0, 190, 255)}
 
 
-def decide(score: float, policy: str = "review_band_175_120") -> str:
+def decide(score: float, policy: str = "minus_two_binary") -> str:
     """Convert the fused SVM decision value to a label using a saved policy."""
     score = float(score)
     if not math.isfinite(score):
@@ -121,7 +121,7 @@ class PhysicalBrickClassifier:
         return np.r_[patches.mean(0), patches.std(0), np.percentile(patches, 90, axis=0)]
 
     def classify(self, rgb: np.ndarray, mask: np.ndarray,
-                 policy: str = "review_band_175_120") -> dict:
+                 policy: str = "minus_two_binary") -> dict:
         mask = normalize_mask(rgb, mask)
         a5 = float(self.approach5.decision_function(appearance_features(rgb, mask)[None])[0])
         dino = float(self.dino_svm.decision_function(self.dino_features(masked_crop(rgb, mask))[None])[0])
@@ -166,7 +166,7 @@ def main() -> None:
                         help="local DINOv2 directory; otherwise fetch pinned Hugging Face revision")
     parser.add_argument("--local-files-only", action="store_true")
     parser.add_argument("--device", choices=("auto", "cpu", "cuda"), default="auto")
-    parser.add_argument("--policy", choices=POLICIES, default="review_band_175_120")
+    parser.add_argument("--policy", choices=POLICIES, default="minus_two_binary")
     parser.add_argument("--output", type=Path, help="optional JSON output path")
     parser.add_argument("--overlay", type=Path, help="optional annotated image output path")
     args = parser.parse_args()

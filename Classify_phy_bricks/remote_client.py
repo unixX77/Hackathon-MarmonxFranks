@@ -338,8 +338,8 @@ def main() -> None:
                         help="SAM3 with the frozen Approach 17 baseline")
     parser.add_argument("--policy", choices=("baseline_margin", "zero_binary",
                                               "minus_two_binary", "review_band_175_120"),
-                        default="review_band_175_120",
-                        help="Approach 17 score rule; default is the live baseline review band")
+                        default="minus_two_binary",
+                        help="Approach 17 score rule; default is the minus-two binary policy")
     parser.add_argument("--camera", type=int, default=0)
     parser.add_argument("--backend", choices=("auto", "avfoundation", "dshow", "v4l2"),
                         default="auto")
