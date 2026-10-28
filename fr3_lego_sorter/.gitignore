@@ -1,0 +1,12 @@
+# colcon
+build/
+install/
+log/
+# Python
+__pycache__/
+*.py[cod]
+# run-time state and logs, written to the repository root by the scripts
+/pose_pick_*.json
+/pose_pick_*.json.tmp
+# camera captures and pipeline results
+vision/data/

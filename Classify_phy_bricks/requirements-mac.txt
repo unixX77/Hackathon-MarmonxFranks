@@ -1,0 +1,3 @@
+# Mac client only; model inference remains on the remote machine.
+numpy>=2.0
+opencv-python>=4.9

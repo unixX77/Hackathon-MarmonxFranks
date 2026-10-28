@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<package format="3">
+  <name>fr3_pose_pick</name>
+  <version>0.1.0</version>
+  <description>Autonomous LEGO pile sorting with a Franka FR3: camera scan, top-layer picks, per-colour stacks and a bin for bad bricks.</description>
+  <maintainer email="maintainer@example.com">Workspace maintainer</maintainer>
+  <license>Apache-2.0</license>
+  <buildtool_depend>ament_cmake</buildtool_depend>
+  <exec_depend>rclpy</exec_depend>
+  <exec_depend>moveit_msgs</exec_depend>
+  <exec_depend>geometry_msgs</exec_depend>
+  <exec_depend>shape_msgs</exec_depend>
+  <exec_depend>action_msgs</exec_depend>
+  <exec_depend>franka_msgs</exec_depend>
+  <exec_depend>python3-yaml</exec_depend>
+  <exec_depend>sensor_msgs</exec_depend>
+  <exec_depend>std_msgs</exec_depend>
+  <exec_depend>visualization_msgs</exec_depend>
+  <exec_depend>tf2_ros_py</exec_depend>
+  <exec_depend>python3-numpy</exec_depend>
+  <exec_depend>python3-scipy</exec_depend>
+  <export><build_type>ament_cmake</build_type></export>
+</package>

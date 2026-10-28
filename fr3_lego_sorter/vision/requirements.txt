@@ -1,0 +1,10 @@
+# The camera pipeline runs in its own Python environment (default: the conda env "sam3", see run_pipeline_classifier.sh).
+# Versions as used on the robot computer (Python 3.12, CUDA 12.8).
+torch==2.10.0
+transformers==5.20.2     # Sam3Model / Sam3Processor; the facebook/sam3 weights need Hugging Face access
+numpy==2.5.4
+opencv-python==5.0.0.93
+pillow==13.0.0
+pyrealsense2==2.59.1.11053
+scikit-learn             # only to retrain the colour model (classifier/colour_model.py)
+anthropic                # only for --second-opinion claude

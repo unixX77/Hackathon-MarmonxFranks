@@ -1,0 +1,11 @@
+# Versions used to run the saved scikit-learn/joblib checkpoints.
+numpy==2.5.4
+scikit-learn==1.9.1
+joblib==1.6.0
+opencv-python==4.11.0.86
+transformers==5.0.0
+pillow==12.3.0
+torch==2.10.0
+torchvision==0.25.0
+safetensors==0.8.0
+huggingface-hub==1.33.0

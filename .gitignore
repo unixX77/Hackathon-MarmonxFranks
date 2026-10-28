@@ -1,0 +1,33 @@
+extracted/
+
+# Local Python environments and caches
+.venv/
+__pycache__/
+*.py[cod]
+
+# Captures and extracted datasets (at any depth)
+data/
+/data[0-9]*/
+/data [0-9]*/
+captures/
+recordings/
+*.db3
+*.db3-shm
+*.db3-wal
+*.bag
+*.raw
+*.npy
+*.npz
+*.ply
+*.pcd
+/data*.zip
+
+# Generated analysis and pipeline results
+results/
+results_*/
+*_results/
+outputs/
+predictions/
+
+# Local backup files
+*.local-backup

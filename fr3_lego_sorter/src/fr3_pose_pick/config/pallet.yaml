@@ -1,0 +1,27 @@
+# Pallet of bricks on the flat Lego baseplate (pose_pick.py --pallet).
+# All lengths in METRES (4 cm = 0.04), in the robot base frame fr3_link0: +x away from the robot,
+# +y to its left. Each run places ONE brick in the next free slot and remembers it.
+#
+# SET IT UP ONCE:
+#   1. Move the hand over the CENTRE of where the first brick (slot 1) should lie, hand pointing down,
+#      and read the position:   ros2 run tf2_ros tf2_echo fr3_link0 fr3_hand_tcp   (first two Translation numbers)
+#   2. Put those two numbers in origin, choose the steps and the counts below.
+#   3. Set  needs_setup: false  (until then the robot refuses to use this file).
+#   4. python3 src/fr3_pose_pick/scripts/pallet_tool.py check     (gaps, window, room for the fingers)
+#   5. python3 src/fr3_pose_pick/scripts/pallet_tool.py status    (the grid)
+needs_setup: true
+
+origin: [0.36, -0.10]        # centre of slot 1 (EXAMPLE - replace with the real spot)
+step_along: [0.04, 0.0]      # from one slot to the next in a row: 4 cm further from the robot
+step_row: [0.0, -0.04]       # from one row to the next: 4 cm to the robot's right
+per_row: 5                   # slots in a row
+rows: 3                      # number of rows  (5 x 3 = 15 bricks)
+yaw_deg: 0                   # long side of every placed brick: 0 = along base x
+layer: 1                     # 1 = on the baseplate; 2 = on top of one brick, ...
+min_gap: 0.004               # refuse a pallet whose bricks would be closer than this (m)
+
+# Optional: the area the bricks must stay inside, [xmin, xmax, ymin, ymax] (e.g. the edges of the baseplate).
+# area: [0.33, 0.57, -0.22, -0.06]
+
+# The state (which slots are filled) is kept next to this file in pallet_state.json.
+state_file: pallet_state.json

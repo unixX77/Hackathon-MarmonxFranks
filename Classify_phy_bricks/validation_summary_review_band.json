@@ -1,0 +1,156 @@
+{
+  "threshold_policy": "review_band_175_120",
+  "overall": {
+    "n_images": 258,
+    "correct": 194,
+    "predictions": {
+      "good": 85,
+      "bad": 130,
+      "uncertain": 43
+    },
+    "decided": 215,
+    "uncertain": 43,
+    "accuracy_on_decided": 0.9023255813953488,
+    "correct_fraction_of_all": 0.751937984496124
+  },
+  "folders": {
+    "Brick_1_good": {
+      "truth": "good",
+      "n_images": 26,
+      "correct": 18,
+      "predictions": {
+        "good": 18,
+        "bad": 3,
+        "uncertain": 5
+      },
+      "decided": 21,
+      "uncertain": 5,
+      "accuracy_on_decided": 0.8571428571428571,
+      "correct_fraction_of_all": 0.6923076923076923
+    },
+    "Brick_2_good": {
+      "truth": "good",
+      "n_images": 30,
+      "correct": 20,
+      "predictions": {
+        "good": 20,
+        "uncertain": 8,
+        "bad": 2
+      },
+      "decided": 22,
+      "uncertain": 8,
+      "accuracy_on_decided": 0.9090909090909091,
+      "correct_fraction_of_all": 0.6666666666666666
+    },
+    "Brick_3_good": {
+      "truth": "good",
+      "n_images": 28,
+      "correct": 15,
+      "predictions": {
+        "good": 15,
+        "uncertain": 9,
+        "bad": 4
+      },
+      "decided": 19,
+      "uncertain": 9,
+      "accuracy_on_decided": 0.7894736842105263,
+      "correct_fraction_of_all": 0.5357142857142857
+    },
+    "Brick_4_good": {
+      "truth": "good",
+      "n_images": 25,
+      "correct": 21,
+      "predictions": {
+        "good": 21,
+        "uncertain": 3,
+        "bad": 1
+      },
+      "decided": 22,
+      "uncertain": 3,
+      "accuracy_on_decided": 0.9545454545454546,
+      "correct_fraction_of_all": 0.84
+    },
+    "Brick_5_bad": {
+      "truth": "bad",
+      "n_images": 25,
+      "correct": 24,
+      "predictions": {
+        "bad": 24,
+        "good": 1
+      },
+      "decided": 25,
+      "uncertain": 0,
+      "accuracy_on_decided": 0.96,
+      "correct_fraction_of_all": 0.96
+    },
+    "Brick_6_bad": {
+      "truth": "bad",
+      "n_images": 24,
+      "correct": 16,
+      "predictions": {
+        "bad": 16,
+        "uncertain": 7,
+        "good": 1
+      },
+      "decided": 17,
+      "uncertain": 7,
+      "accuracy_on_decided": 0.9411764705882353,
+      "correct_fraction_of_all": 0.6666666666666666
+    },
+    "Brick_7_bad": {
+      "truth": "bad",
+      "n_images": 24,
+      "correct": 24,
+      "predictions": {
+        "bad": 24
+      },
+      "decided": 24,
+      "uncertain": 0,
+      "accuracy_on_decided": 1.0,
+      "correct_fraction_of_all": 1.0
+    },
+    "Brick_8_bad": {
+      "truth": "bad",
+      "n_images": 24,
+      "correct": 14,
+      "predictions": {
+        "bad": 14,
+        "good": 6,
+        "uncertain": 4
+      },
+      "decided": 20,
+      "uncertain": 4,
+      "accuracy_on_decided": 0.7,
+      "correct_fraction_of_all": 0.5833333333333334
+    },
+    "Brick_9_bad": {
+      "truth": "bad",
+      "n_images": 24,
+      "correct": 19,
+      "predictions": {
+        "bad": 19,
+        "uncertain": 4,
+        "good": 1
+      },
+      "decided": 20,
+      "uncertain": 4,
+      "accuracy_on_decided": 0.95,
+      "correct_fraction_of_all": 0.7916666666666666
+    },
+    "Brick_10_bad": {
+      "truth": "bad",
+      "n_images": 28,
+      "correct": 23,
+      "predictions": {
+        "bad": 23,
+        "good": 2,
+        "uncertain": 3
+      },
+      "decided": 25,
+      "uncertain": 3,
+      "accuracy_on_decided": 0.92,
+      "correct_fraction_of_all": 0.8214285714285714
+    }
+  },
+  "evaluation_note": "This inference run does not retrain or hold out physical bricks."
+}
