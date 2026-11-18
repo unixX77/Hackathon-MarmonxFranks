@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 350" role="img" aria-labelledby="title desc">
+<title id="title">Physical-brick classification pipeline</title><desc id="desc">A SAM 3 brick mask is processed by a color and texture SVM and a DINOv2 feature SVM, whose scores are averaged before applying the minus two binary threshold.</desc>
+<defs><marker id="arrow" markerWidth="10" markerHeight="10" refX="9" refY="5" orient="auto"><path d="M0 0 L10 5 L0 10Z" fill="#6888aa"/></marker><style>text{font-family:'Google Sans','Noto Sans',Arial,sans-serif;fill:#39495b}.h{font-size:19px;font-weight:700}.s{font-size:15px;fill:#5e7084}.t{font-size:12px;letter-spacing:1.5px;font-weight:700;fill:#1966bd}.b{fill:white;stroke:#d3dfed;stroke-width:2}.l{fill:none;stroke:#6888aa;stroke-width:2.5;marker-end:url(#arrow)}</style></defs>
+<rect width="1280" height="350" rx="16" fill="#f9fbfe"/>
+<rect x="22" y="113" width="183" height="125" rx="12" class="b"/><text x="42" y="143" class="t">INPUT</text><text x="42" y="178" class="h">Brick + SAM 3</text><text x="42" y="203" class="s">Individual mask</text>
+<rect x="260" y="28" width="270" height="115" rx="12" class="b"/><text x="280" y="58" class="t">BRANCH 01</text><text x="280" y="91" class="h">Color + texture</text><text x="280" y="116" class="s">52 features → linear SVM</text>
+<rect x="260" y="207" width="270" height="115" rx="12" class="b"/><text x="280" y="237" class="t">BRANCH 02</text><text x="280" y="270" class="h">DINOv2 patch features</text><text x="280" y="295" class="s">1,152 → PCA 32 → linear SVM</text>
+<rect x="586" y="113" width="247" height="125" rx="12" fill="#ecf5ff" stroke="#a9cbe9" stroke-width="2"/><text x="606" y="143" class="t">FUSION</text><text x="606" y="178" class="h">Average the scores</text><text x="606" y="203" class="s">Equal-weight late fusion</text>
+<rect x="892" y="113" width="360" height="125" rx="12" fill="#f4faf6" stroke="#bfdcc8" stroke-width="2"/><text x="912" y="143" class="t">BINARY DECISION</text><text x="912" y="178" class="h">Good ≤ −2.0  ·  Bad &gt; −2.0</text><text x="912" y="203" class="s">Scores are not probabilities</text>
+<path d="M205 148 H230 V85 H257" class="l"/><path d="M205 203 H230 V265 H257" class="l"/><path d="M530 85 H558 V148 H583" class="l"/><path d="M530 265 H558 V203 H583" class="l"/><path d="M833 175 H889" class="l"/>
+</svg>
