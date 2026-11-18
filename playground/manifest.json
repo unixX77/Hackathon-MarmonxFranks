@@ -1,0 +1,73 @@
+{
+  "version": 1,
+  "scenes": [
+    {
+      "id": "data3-20261024_091244-000000",
+      "name": "Dense top layer",
+      "description": "27 saved top-layer candidates",
+      "thumbnail": "playground/scenes/data3-20261024_091244-000000/thumb.jpg",
+      "rgb": "playground/scenes/data3-20261024_091244-000000/rgb.jpg",
+      "depth": "playground/scenes/data3-20261024_091244-000000/depth.png",
+      "metadata": "playground/scenes/data3-20261024_091244-000000/scene.json",
+      "available": {
+        "rgb": true,
+        "depth": true,
+        "segmentation": false,
+        "detection": true,
+        "quality": true,
+        "pose": true
+      }
+    },
+    {
+      "id": "data3-20261024_091640-000000",
+      "name": "Partially cleared stack",
+      "description": "19 saved top-layer candidates",
+      "thumbnail": "playground/scenes/data3-20261024_091640-000000/thumb.jpg",
+      "rgb": "playground/scenes/data3-20261024_091640-000000/rgb.jpg",
+      "depth": "playground/scenes/data3-20261024_091640-000000/depth.png",
+      "metadata": "playground/scenes/data3-20261024_091640-000000/scene.json",
+      "available": {
+        "rgb": true,
+        "depth": true,
+        "segmentation": false,
+        "detection": true,
+        "quality": true,
+        "pose": true
+      }
+    },
+    {
+      "id": "data3-20261024_091956-000000",
+      "name": "Sparse top layer",
+      "description": "4 saved top-layer candidates",
+      "thumbnail": "playground/scenes/data3-20261024_091956-000000/thumb.jpg",
+      "rgb": "playground/scenes/data3-20261024_091956-000000/rgb.jpg",
+      "depth": "playground/scenes/data3-20261024_091956-000000/depth.png",
+      "metadata": "playground/scenes/data3-20261024_091956-000000/scene.json",
+      "available": {
+        "rgb": true,
+        "depth": true,
+        "segmentation": false,
+        "detection": true,
+        "quality": true,
+        "pose": true
+      }
+    },
+    {
+      "id": "rgb-sam3-rgb_20261023_165040_935110",
+      "name": "SAM 3 candidates \u00b7 RGB only",
+      "description": "Earlier RGB-only run \u00b7 4 masks",
+      "thumbnail": "playground/scenes/rgb-sam3-rgb_20261023_165040_935110/thumb.jpg",
+      "rgb": "playground/scenes/rgb-sam3-rgb_20261023_165040_935110/rgb.jpg",
+      "depth": null,
+      "metadata": "playground/scenes/rgb-sam3-rgb_20261023_165040_935110/scene.json",
+      "available": {
+        "rgb": true,
+        "depth": false,
+        "segmentation": true,
+        "detection": false,
+        "quality": false,
+        "pose": false
+      }
+    }
+  ]
+}
